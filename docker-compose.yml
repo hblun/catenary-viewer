@@ -18,11 +18,10 @@ services:
     networks:
       - catenary
 
-  # GTFS Ingestion
   maple:
     build:
       context: .
-      dockerfile: backend/Dockerfile.maple
+      dockerfile: Dockerfile.maple
     container_name: catenary_maple
     environment:
       DATABASE_URL: postgres://catenary:catenary@postgres:5432/catenary
@@ -35,11 +34,10 @@ services:
     networks:
       - catenary
 
-  # Tile Server
   harebell:
     build:
       context: .
-      dockerfile: backend/Dockerfile.harebell
+      dockerfile: Dockerfile.harebell
     container_name: catenary_harebell
     environment:
       DATABASE_URL: postgres://catenary:catenary@postgres:5432/catenary
@@ -52,11 +50,10 @@ services:
     networks:
       - catenary
 
-  # Search API
   birch:
     build:
       context: .
-      dockerfile: backend/Dockerfile.birch
+      dockerfile: Dockerfile.birch
     container_name: catenary_birch
     environment:
       DATABASE_URL: postgres://catenary:catenary@postgres:5432/catenary
@@ -69,7 +66,6 @@ services:
     networks:
       - catenary
 
-  # Frontend Viewer
   viewer:
     image: nginx:alpine
     container_name: catenary_viewer

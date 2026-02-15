@@ -1,0 +1,12 @@
+# Allow everything, except specific build artifacts
+*
+!.git/
+!backend/
+!frontend/
+!*.html
+!*.md
+!*.toml
+!*.yml
+!Makefile
+!docs/
+!gtfs/

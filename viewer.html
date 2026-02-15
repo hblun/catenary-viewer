@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catenary Viewer</title>
+    <script src='https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css' rel='stylesheet' />
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+            max-width: 300px;
+        }
+
+        #controls h3 {
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .filter-section {
+            margin-bottom: 12px;
+        }
+
+        .filter-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .filter-label {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .chip-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .chip {
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            background: white;
+            transition: all 0.15s ease;
+        }
+
+        .chip:hover {
+            border-color: #999;
+        }
+
+        .chip.active {
+            background: #333;
+            color: white;
+            border-color: #333;
+        }
+
+        .chip.rail { border-left: 3px solid #e31837; }
+        .chip.metro { border-left: 3px solid #007dc5; }
+        .chip.bus { border-left: 3px solid #007b3d; }
+        .chip.other { border-left: 3px solid #6b5b95; }
+
+        #selected-routes {
+            position: absolute;
+            bottom: 20px;
+            left: 10px;
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+            max-width: 300px;
+        }
+
+        #selected-routes h4 {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .selected-route {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .selected-route:last-child {
+            border-bottom: none;
+        }
+
+        .selected-route-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .route-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+
+        .route-name {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .pin-btn, .remove-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 2px 6px;
+            opacity: 0.5;
+        }
+
+        .pin-btn:hover, .remove-btn:hover {
+            opacity: 1;
+        }
+
+        .pin-btn.pinned {
+            color: #e31837;
+            opacity: 1;
+        }
+
+        #reset-btn {
+            margin-top: 8px;
+            padding: 6px 12px;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            width: 100%;
+        }
+
+        #reset-btn:hover {
+            background: #eee;
+        }
+
+        #share-btn {
+            margin-top: 6px;
+            padding: 6px 12px;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            width: 100%;
+        }
+
+        #share-btn:hover {
+            background: #555;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            pointer-events: none;
+            font-size: 13px;
+            z-index: 100;
+            display: none;
+        }
+
+        .tooltip.visible {
+            display: block;
+        }
+
+        .tooltip-route {
+            font-weight: 600;
+        }
+
+        .tooltip-operator {
+            color: #666;
+            font-size: 11px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    
+    <div id="controls">
+        <div class="filter-section">
+            <div class="filter-label">Mode</div>
+            <div class="chip-container" id="mode-filters">
+                <button class="chip rail" data-mode="rail">Rail</button>
+                <button class="chip metro" data-mode="metro">Metro/Tram</button>
+                <button class="chip bus" data-mode="bus">Bus</button>
+                <button class="chip other" data-mode="other">Other</button>
+            </div>
+        </div>
+        
+        <div class="filter-section">
+            <div class="filter-label">Operator</div>
+            <div class="chip-container" id="operator-filters">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <div id="selected-routes">
+        <h4>Selected Routes</h4>
+        <div id="selected-list"></div>
+        <button id="reset-btn">Clear All</button>
+        <button id="share-btn">Copy Share Link</button>
+    </div>
+
+    <div class="tooltip" id="tooltip">
+        <div class="tooltip-route"></div>
+        <div class="tooltip-operator"></div>
+    </div>
+
+    <script>
+        const MODE_COLORS = {
+            'rail': '#e31837',
+            'metro': '#007dc5', 
+            'bus': '#007b3d',
+            'other': '#6b5b95'
+        };
+
+        const MODE_MAP = {
+            '0': 'metro',   // Tram
+            '1': 'metro',   // Subway
+            '2': 'rail',    // Rail
+            '3': 'bus',     // Bus
+            '4': 'other',   // Ferry
+            '5': 'metro',   // Cable car
+            '6': 'metro',   // Aerial lift
+            '7': 'other',   // Funicular
+            '11': 'bus',    // Trolleybus
+            '12': 'metro'   // Monorail
+        };
+
+        let state = {
+            selectedRoutes: new Set(),
+            pinnedRoutes: new Set(),
+            activeModes: new Set(),
+            activeOperator: null,
+            operators: new Set()
+        };
+
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://maps.catenarymaps.org/light-style.json',
+            center: [-3.5, 56.8], // Scotland center
+            zoom: 6
+        });
+
+        map.addControl(new maplibregl.NavigationControl());
+
+        // Tooltip element
+        const tooltip = document.getElementById('tooltip');
+
+        // Tile server URL - change for production
+        // In Docker: http://harebell:8080
+        // Local: http://127.0.0.1:8080
+        const TILE_URL = window.location.hostname === 'localhost' 
+            ? 'http://127.0.0.1:8080' 
+            : 'http://harebell:8080';
+
+        map.on('load', function () {
+            // Main routes layer
+            map.addSource('harebell', {
+                'type': 'vector',
+                'tiles': [TILE_URL + '/tiles/{z}/{x}/{y}.pbf'],
+                'minzoom': 0,
+                'maxzoom': 20
+            });
+
+            // Dimmed routes (non-matching when filters active)
+            map.addLayer({
+                'id': 'transit-lines-dimmed',
+                'type': 'line',
+                'source': 'harebell',
+                'source-layer': 'transit',
+                'paint': {
+                    'line-color': '#888',
+                    'line-width': 1,
+                    'line-opacity': 0.2
+                },
+                'layout': {
+                    'line-cap': 'round',
+                    'line-join': 'round'
+                }
+            });
+
+            // Base routes (visible, filterable)
+            map.addLayer({
+                'id': 'transit-lines',
+                'type': 'line',
+                'source': 'harebell',
+                'source-layer': 'transit',
+                'paint': {
+                    'line-color': ['get', 'color'],
+                    'line-width': [
+                        "interpolate", ["linear"], ["zoom"],
+                        7, 2,
+                        10, 3,
+                        14, 5
+                    ],
+                    'line-opacity': 0.95
+                },
+                'layout': {
+                    'line-cap': 'round',
+                    'line-join': 'round'
+                }
+            });
+
+            // Hitbox layer for click detection
+            map.addLayer({
+                'id': 'transit-lines-hitbox',
+                'type': 'line',
+                'source': 'harebell',
+                'source-layer': 'transit',
+                'paint': {
+                    'line-width': 20,
+                    'line-opacity': 0
+                }
+            });
+
+            // Selected routes (highlighted)
+            map.addLayer({
+                'id': 'transit-lines-selected',
+                'type': 'line',
+                'source': 'harebell',
+                'source-layer': 'transit',
+                'paint': {
+                    'line-color': ['get', 'color'],
+                    'line-width': [
+                        "interpolate", ["linear"], ["zoom"],
+                        7, 4,
+                        10, 6,
+                        14, 10
+                    ],
+                    'line-opacity': 1
+                },
+                'layout': {
+                    'line-cap': 'round',
+                    'line-join': 'round'
+                }
+            });
+
+            // Stations
+            map.addLayer({
+                'id': 'stations',
+                'type': 'circle',
+                'source': 'harebell',
+                'source-layer': 'stations',
+                'paint': {
+                    'circle-radius': 3,
+                    'circle-color': '#ffffff',
+                    'circle-stroke-width': 1.5,
+                    'circle-stroke-color': '#333'
+                }
+            });
+
+            // Hide dimmed and selected initially
+            map.setLayoutProperty('transit-lines-dimmed', 'visibility', 'none');
+            map.setLayoutProperty('transit-lines-selected', 'visibility', 'none');
+
+            // Parse URL state
+            parseURLState();
+            updateFilters();
+            updateSelection();
+        });
+
+        // Hover tooltip
+        map.on('mouseenter', 'transit-lines-hitbox', function (e) {
+            const props = e.features[0]?.properties;
+            if (!props) return;
+
+            map.getCanvas().style.cursor = 'pointer';
+            
+            const routeName = props.route_short_name || props.route_id || 'Unknown';
+            const routeLong = props.route_long_name || '';
+            const operator = props.operator_name || props.chateau_id || '';
+            
+            tooltip.querySelector('.tooltip-route').textContent = routeName + (routeLong ? ` - ${routeLong}` : '');
+            tooltip.querySelector('.tooltip-operator').textContent = operator;
+            
+            tooltip.classList.add('visible');
+        });
+
+        map.on('mousemove', 'transit-lines-hitbox', function (e) {
+            tooltip.style.left = (e.originalEvent.clientX + 15) + 'px';
+            tooltip.style.top = (e.originalEvent.clientY + 15) + 'px';
+        });
+
+        map.on('mouseleave', 'transit-lines-hitbox', function () {
+            map.getCanvas().style.cursor = '';
+            tooltip.classList.remove('visible');
+        });
+
+        // Click selection
+        map.on('click', 'transit-lines-hitbox', function (e) {
+            const props = e.features[0]?.properties;
+            if (!props) return;
+
+            const routeId = props.route_id;
+            const isShiftClick = e.originalEvent.shiftKey;
+
+            if (isShiftClick) {
+                // Multi-select
+                if (state.selectedRoutes.has(routeId)) {
+                    state.selectedRoutes.delete(routeId);
+                } else {
+                    state.selectedRoutes.add(routeId);
+                }
+            } else {
+                // Single select (replace)
+                if (state.selectedRoutes.size === 1 && state.selectedRoutes.has(routeId)) {
+                    state.selectedRoutes.clear();
+                } else {
+                    state.selectedRoutes.clear();
+                    state.selectedRoutes.add(routeId);
+                }
+            }
+
+            updateURLState();
+            updateSelection();
+            updateSidebar();
+        });
+
+        // Mode filter handlers
+        document.querySelectorAll('#mode-filters .chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const mode = chip.dataset.mode;
+                if (state.activeModes.has(mode)) {
+                    state.activeModes.delete(mode);
+                    chip.classList.remove('active');
+                } else {
+                    state.activeModes.add(mode);
+                    chip.classList.add('active');
+                }
+                updateURLState();
+                updateFilters();
+            });
+        });
+
+        // Reset button
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            state.selectedRoutes.clear();
+            state.pinnedRoutes.clear();
+            state.activeModes.clear();
+            state.activeOperator = null;
+            
+            document.querySelectorAll('#mode-filters .chip, #operator-filters .chip').forEach(c => c.classList.remove('active'));
+            
+            updateURLState();
+            updateFilters();
+            updateSelection();
+            updateSidebar();
+        });
+
+        // Share button
+        document.getElementById('share-btn').addEventListener('click', () => {
+            const url = window.location.href;
+            navigator.clipboard.writeText(url).then(() => {
+                const btn = document.getElementById('share-btn');
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy Share Link', 2000);
+            });
+        });
+
+        function updateFilters() {
+            const filters = [];
+            
+            // Mode filter
+            if (state.activeModes.size > 0) {
+                const modeList = Array.from(state.activeModes);
+                filters.push(['in', ['get', 'mode'], ['literal', modeList]]);
+            }
+            
+            // Operator filter
+            if (state.activeOperator) {
+                filters.push(['==', ['get', 'operator_id'], state.activeOperator]);
+            }
+
+            const hasFilters = filters.length > 0;
+
+            // Update base layer
+            if (hasFilters) {
+                map.setFilter('transit-lines', filters);
+                map.setLayoutProperty('transit-lines-dimmed', 'visibility', 'visible');
+                // Dimmed shows inverse
+                map.setFilter('transit-lines-dimmed', ['!', filters[0]]);
+            } else {
+                map.setFilter('transit-lines', null);
+                map.setLayoutProperty('transit-lines-dimmed', 'visibility', 'none');
+            }
+        }
+
+        function updateSelection() {
+            const selectedIds = Array.from(state.selectedRoutes);
+            
+            if (selectedIds.length > 0) {
+                map.setLayoutProperty('transit-lines-selected', 'visibility', 'visible');
+                map.setFilter('transit-lines-selected', ['in', ['get', 'route_id'], ['literal', selectedIds]]);
+            } else {
+                map.setLayoutProperty('transit-lines-selected', 'visibility', 'none');
+            }
+        }
+
+        function updateSidebar() {
+            const list = document.getElementById('selected-list');
+            list.innerHTML = '';
+
+            state.selectedRoutes.forEach(routeId => {
+                const div = document.createElement('div');
+                div.className = 'selected-route';
+                
+                const isPinned = state.pinnedRoutes.has(routeId);
+                
+                div.innerHTML = `
+                    <div class="selected-route-info">
+                        <div class="route-color" style="background: #333"></div>
+                        <span class="route-name">${routeId}</span>
+                    </div>
+                    <div>
+                        <button class="pin-btn ${isPinned ? 'pinned' : ''}" data-route="${routeId}" title="Pin">📌</button>
+                        <button class="remove-btn" data-route="${routeId}" title="Remove">×</button>
+                    </div>
+                `;
+                
+                list.appendChild(div);
+            });
+
+            // Add event listeners
+            list.querySelectorAll('.pin-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const routeId = btn.dataset.route;
+                    if (state.pinnedRoutes.has(routeId)) {
+                        state.pinnedRoutes.delete(routeId);
+                    } else {
+                        state.pinnedRoutes.add(routeId);
+                    }
+                    updateURLState();
+                    updateSidebar();
+                });
+            });
+
+            list.querySelectorAll('.remove-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const routeId = btn.dataset.route;
+                    state.selectedRoutes.delete(routeId);
+                    updateURLState();
+                    updateSelection();
+                    updateSidebar();
+                });
+            });
+        }
+
+        function parseURLState() {
+            const params = new URLSearchParams(window.location.search);
+            
+            const routes = params.get('routes');
+            if (routes) routes.split(',').forEach(r => state.selectedRoutes.add(r));
+            
+            const pinned = params.get('pinned');
+            if (pinned) pinned.split(',').forEach(r => state.pinnedRoutes.add(r));
+            
+            const mode = params.get('mode');
+            if (mode) {
+                mode.split(',').forEach(m => {
+                    state.activeModes.add(m);
+                    const chip = document.querySelector(`#mode-filters .chip[data-mode="${m}"]`);
+                    if (chip) chip.classList.add('active');
+                });
+            }
+            
+            const operator = params.get('operator');
+            if (operator) {
+                state.activeOperator = operator;
+            }
+        }
+
+        function updateURLState() {
+            const params = new URLSearchParams();
+            
+            if (state.selectedRoutes.size > 0) {
+                params.set('routes', Array.from(state.selectedRoutes).join(','));
+            }
+            if (state.pinnedRoutes.size > 0) {
+                params.set('pinned', Array.from(state.pinnedRoutes).join(','));
+            }
+            if (state.activeModes.size > 0) {
+                params.set('mode', Array.from(state.activeModes).join(','));
+            }
+            if (state.activeOperator) {
+                params.set('operator', state.activeOperator);
+            }
+            
+            const newURL = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+            window.history.replaceState(null, '', newURL);
+        }
+    </script>
+</body>
+
+</html>

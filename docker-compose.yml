@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: catenary_postgres
+    environment:
+      POSTGRES_USER: catenary
+      POSTGRES_PASSWORD: catenary
+      POSTGRES_DB: catenary
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catenary"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - catenary
+
+  # GTFS Ingestion
+  maple:
+    build:
+      context: .
+      dockerfile: Dockerfile.maple
+    container_name: catenary_maple
+    environment:
+      DATABASE_URL: postgres://catenary:catenary@postgres:5432/catenary
+      RUST_LOG: info
+    volumes:
+      - ./gtfs:/gtfs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - catenary
+
+  # Tile Server
+  harebell:
+    build:
+      context: .
+      dockerfile: Dockerfile.harebell
+    container_name: catenary_harebell
+    environment:
+      DATABASE_URL: postgres://catenary:catenary@postgres:5432/catenary
+      RUST_LOG: info
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - catenary
+
+  # Search API
+  birch:
+    build:
+      context: .
+      dockerfile: Dockerfile.birch
+    container_name: catenary_birch
+    environment:
+      DATABASE_URL: postgres://catenary:catenary@postgres:5432/catenary
+      RUST_LOG: info
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - catenary
+
+  # Frontend Viewer
+  viewer:
+    image: nginx:alpine
+    container_name: catenary_viewer
+    ports:
+      - "8081:80"
+    volumes:
+      - ./viewer.html:/usr/share/nginx/html/index.html:ro
+    depends_on:
+      - harebell
+    networks:
+      - catenary
+
+volumes:
+  postgres_data:
+
+networks:
+  catenary:
+    name: catenary_viewer

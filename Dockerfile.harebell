@@ -1,0 +1,33 @@
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    protobuf-compiler \
+    libssl-dev \
+    libpq-dev \
+    pkg-config \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.80.0
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /app
+
+COPY backend/Cargo.toml backend/Cargo.lock ./
+COPY backend/src ./src
+COPY backend/migrations ./migrations
+COPY backend/diesel.toml ./
+COPY backend/rust-toolchain.toml ./
+
+RUN RUST_MIN_STACK=16777216 cargo build --release --bin harebell
+
+RUN mkdir -p /output /app/tiles && cp ./target/release/harebell /output/
+
+WORKDIR /app
+
+EXPOSE 8080
+
+CMD ["/output/harebell", "serve", "--address", "0.0.0.0", "--port", "8080"]

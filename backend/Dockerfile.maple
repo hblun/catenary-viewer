@@ -11,13 +11,13 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-COPY migrations ./migrations
-COPY diesel.toml ./
-COPY rust-toolchain.toml ./
+COPY backend/Cargo.toml backend/Cargo.lock ./
+COPY backend/src ./src
+COPY backend/migrations ./migrations
+COPY backend/diesel.toml ./
+COPY backend/rust-toolchain.toml ./
 
-RUN cargo build --release --bin maple
+RUN RUST_MIN_STACK=16777216 cargo build --release --bin maple
 
 RUN mkdir -p /output && cp ./target/release/maple /output/
 

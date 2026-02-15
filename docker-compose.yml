@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgis/postgis:16-3.4
@@ -24,7 +22,7 @@ services:
   maple:
     build:
       context: .
-      dockerfile: Dockerfile.maple
+      dockerfile: backend/Dockerfile.maple
     container_name: catenary_maple
     environment:
       DATABASE_URL: postgres://catenary:catenary@postgres:5432/catenary
@@ -41,7 +39,7 @@ services:
   harebell:
     build:
       context: .
-      dockerfile: Dockerfile.harebell
+      dockerfile: backend/Dockerfile.harebell
     container_name: catenary_harebell
     environment:
       DATABASE_URL: postgres://catenary:catenary@postgres:5432/catenary
@@ -58,7 +56,7 @@ services:
   birch:
     build:
       context: .
-      dockerfile: Dockerfile.birch
+      dockerfile: backend/Dockerfile.birch
     container_name: catenary_birch
     environment:
       DATABASE_URL: postgres://catenary:catenary@postgres:5432/catenary

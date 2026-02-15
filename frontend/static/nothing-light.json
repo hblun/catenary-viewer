@@ -1,0 +1,35 @@
+{
+	"version": 8,
+	"metadata": { "maputnik:renderer": "mlgljs" },
+	"sources": {
+		"esa-worldcover-polygons": {
+			"type": "vector",
+			"url": "https://tiles.swiss-map.cc/esa-worldcover-polygons-v2.json"
+		},
+		"openmaptiles": {
+			"type": "vector",
+			"url": "https://tiles.openfreemap.org/planet"
+		}
+	},
+	"sprite": [
+		{ "id": "ofm", "url": "https://tiles.openfreemap.org/sprites/ofm_f384/ofm" },
+		{ "id": "mbicons", "url": "https://moreicons.catenarymaps.org/lighticons" },
+		{
+			"id": "orm",
+			"url": "https://maps.catenarymaps.org/orm_sprite_symbols/symbols"
+		},
+		{
+			"id": "ormsdf",
+			"url": "https://maps.catenarymaps.org/orm_sdf_sprite_symbols/symbols"
+		}
+	],
+	"glyphs": "https://tipo.catenarymaps.org/fonts/{fontstack}/{range}.pbf",
+	"layers": [
+		{
+			"id": "background",
+			"type": "background",
+			"paint": { "background-color": "#FFFFFF" }
+		}
+	],
+	"id": "jpoasdb"
+}

@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  test_runner:
+    build:
+      context: ../../
+      dockerfile: containers/test_graph_gen/Dockerfile
+    environment:
+      DATABASE_URL: postgres://catenary:catenary@postgres/catenary
+    volumes:
+      # Output directories
+      - ./output:/catenary/graph_output
+      - ./osm_chunks:/catenary/osm_chunks
+    networks:
+      - default
+
+networks:
+  default:
+    name: catenary_common
+    external: true

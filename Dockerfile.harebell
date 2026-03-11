@@ -23,9 +23,9 @@ COPY backend/diesel.toml ./
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
-    sh -lc 'RUST_MIN_STACK=16777216 cargo build --profile pipeline --bin harebell \
+    RUST_MIN_STACK=16777216 cargo build --profile pipeline --bin harebell \
     && mkdir -p /output /app/tiles \
-    && cp ./target/pipeline/harebell /output/'
+    && cp ./target/pipeline/harebell /output/
 
 WORKDIR /app
 

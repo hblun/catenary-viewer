@@ -26,8 +26,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
-    sh -lc 'RUST_MIN_STACK=16777216 cargo build --profile pipeline --bin maple \
+    RUST_MIN_STACK=16777216 cargo build --profile pipeline --bin maple \
     && mkdir -p /output \
-    && cp ./target/pipeline/maple /output/'
+    && cp ./target/pipeline/maple /output/
 
 CMD ["/output/maple"]

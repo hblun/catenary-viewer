@@ -30,6 +30,8 @@ For the Scotland preset, the expected filename is:
 railonly-scotland-latest.osm.pbf
 ```
 
+If you only have a broader Great Britain extract, that is acceptable too. Place it in the OSM directory with the expected Scotland filename so the compose stack can find it.
+
 ## Docker
 
 Use:

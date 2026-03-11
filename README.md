@@ -50,11 +50,13 @@ GLOBEFLOWER_REGION=scotland \
 docker compose -f docker-compose.harebell-pipeline.yml up --build
 ```
 
-Expected OSM file in `${OSM_HOST_DIR}` for the Scotland region:
+Expected OSM file path in `${OSM_HOST_DIR}` for the Scotland region:
 
 ```text
 railonly-scotland-latest.osm.pbf
 ```
+
+The file does not have to come from a Scotland-only Geofabrik extract. A Great Britain extract renamed to `railonly-scotland-latest.osm.pbf` is also valid if that is the OSM coverage you have available.
 
 Ports:
 - `8080`: Harebell tile server

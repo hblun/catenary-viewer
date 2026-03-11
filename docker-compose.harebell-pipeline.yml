@@ -20,9 +20,10 @@ services:
       - harebell_postgres:/var/lib/postgresql/data
 
   maple-local:
+    image: ${PIPELINE_IMAGE:-catenary-harebell-pipeline:latest}
     build:
       context: .
-      dockerfile: Dockerfile.maple
+      dockerfile: Dockerfile.pipeline
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
       GTFS_ZIP_TEMP: /tmp/gtfs-zip
@@ -44,9 +45,10 @@ services:
       - ${GTFS_HOST_DIR:-./gtfs}:/gtfs:ro
 
   globeflower:
+    image: ${PIPELINE_IMAGE:-catenary-harebell-pipeline:latest}
     build:
       context: .
-      dockerfile: Dockerfile.globeflower
+      dockerfile: Dockerfile.pipeline
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
     command: >
@@ -66,9 +68,10 @@ services:
       - harebell_pipeline:/pipeline
 
   harebell-export:
+    image: ${PIPELINE_IMAGE:-catenary-harebell-pipeline:latest}
     build:
       context: .
-      dockerfile: Dockerfile.harebell
+      dockerfile: Dockerfile.pipeline
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
     command: >
@@ -88,9 +91,10 @@ services:
       - harebell_tiles:/tiles
 
   harebell:
+    image: ${PIPELINE_IMAGE:-catenary-harebell-pipeline:latest}
     build:
       context: .
-      dockerfile: Dockerfile.harebell
+      dockerfile: Dockerfile.pipeline
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
     command:

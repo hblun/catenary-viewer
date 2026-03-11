@@ -113,7 +113,13 @@
     }
 
     function renderMetadata(metadata) {
-      summary.textContent = `${metadata.archive} · ${metadata.route_count} routes · ${metadata.stop_count} stops`;
+      if (metadata.error) {
+        summary.textContent = "GTFS data failed to load.";
+        errorBox.style.display = "block";
+        errorBox.textContent = metadata.error;
+      } else {
+        summary.textContent = `${metadata.archive} · ${metadata.route_count} routes · ${metadata.stop_count} stops`;
+      }
       badges.innerHTML = "";
       ["Basemap styling from Catenary", "Your GTFS routes", "Your GTFS stops"].forEach((label) => {
         const badge = document.createElement("span");

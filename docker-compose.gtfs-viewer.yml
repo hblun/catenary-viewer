@@ -1,27 +1,13 @@
 services:
-  gtfs-prep:
+  viewer:
     build:
       context: .
-      dockerfile: Dockerfile.gtfs-prep
+      dockerfile: Dockerfile.gtfs-viewer
     environment:
       GTFS_DIR: /gtfs
-      OUTPUT_DIR: /output
+      OUTPUT_DIR: /app/site/data
       GTFS_FILE: ${GTFS_FILE:-}
+    ports:
+      - "8081:8081"
     volumes:
       - ${GTFS_HOST_DIR:-./gtfs}:/gtfs:ro
-      - gtfs_viewer_data:/output
-
-  viewer:
-    image: nginx:alpine
-    depends_on:
-      gtfs-prep:
-        condition: service_completed_successfully
-    ports:
-      - "8081:80"
-    volumes:
-      - ./viewer-static/index.html:/usr/share/nginx/html/index.html:ro
-      - ./frontend/static:/usr/share/nginx/html/static:ro
-      - gtfs_viewer_data:/usr/share/nginx/html/data:ro
-
-volumes:
-  gtfs_viewer_data:

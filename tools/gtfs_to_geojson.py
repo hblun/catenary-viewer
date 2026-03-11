@@ -2,11 +2,11 @@
 import csv
 import io
 import json
-import math
 import os
 import sys
 import zipfile
 from collections import defaultdict
+from contextlib import contextmanager
 
 
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/output")
@@ -51,19 +51,24 @@ def pick_archive() -> str:
     return archives[0]
 
 
-def open_csv_from_zip(zf: zipfile.ZipFile, name: str) -> list[dict[str, str]]:
+def resolve_member_name(zf: zipfile.ZipFile, name: str) -> str | None:
     members = {member.filename.lower(): member.filename for member in zf.infolist()}
-    target = None
     for member_name, original_name in members.items():
         if member_name.endswith(f"/{name}") or member_name == name:
-            target = original_name
-            break
+            return original_name
+    return None
+
+
+@contextmanager
+def iter_csv_from_zip(zf: zipfile.ZipFile, name: str):
+    target = resolve_member_name(zf, name)
     if target is None:
-        return []
+        yield None
+        return
 
     with zf.open(target) as raw_file:
         text = io.TextIOWrapper(raw_file, encoding="utf-8-sig", newline="")
-        return list(csv.DictReader(text))
+        yield csv.DictReader(text)
 
 
 def parse_float(value: str | None) -> float | None:
@@ -124,66 +129,71 @@ def main() -> None:
     archive_path = pick_archive()
 
     with zipfile.ZipFile(archive_path) as zf:
-        routes_rows = open_csv_from_zip(zf, "routes.txt")
-        trips_rows = open_csv_from_zip(zf, "trips.txt")
-        shapes_rows = open_csv_from_zip(zf, "shapes.txt")
-        stops_rows = open_csv_from_zip(zf, "stops.txt")
-        stop_times_rows = open_csv_from_zip(zf, "stop_times.txt")
+        with iter_csv_from_zip(zf, "routes.txt") as routes_reader:
+            if routes_reader is None:
+                fail("routes.txt is missing")
+            routes_by_id: dict[str, dict[str, str]] = {}
+            for row in routes_reader:
+                route_id = row.get("route_id")
+                if route_id:
+                    routes_by_id[route_id] = row
 
-    if not routes_rows:
-        fail("routes.txt is missing or empty")
-    if not stops_rows:
-        fail("stops.txt is missing or empty")
+        with iter_csv_from_zip(zf, "trips.txt") as trips_reader:
+            trip_shape_by_route: dict[str, set[str]] = defaultdict(set)
+            trip_count_by_route: dict[str, int] = defaultdict(int)
+            if trips_reader is not None:
+                for row in trips_reader:
+                    route_id = row.get("route_id")
+                    if not route_id:
+                        continue
+                    trip_count_by_route[route_id] += 1
+                    shape_id = row.get("shape_id")
+                    if shape_id:
+                        trip_shape_by_route[route_id].add(shape_id)
 
-    routes_by_id: dict[str, dict[str, str]] = {}
-    for row in routes_rows:
-        route_id = row.get("route_id")
-        if route_id:
-            routes_by_id[route_id] = row
+        with iter_csv_from_zip(zf, "shapes.txt") as shapes_reader:
+            shape_stop_order: dict[str, list[tuple[int, float, float]]] = defaultdict(list)
+            if shapes_reader is not None:
+                for row in shapes_reader:
+                    shape_id = row.get("shape_id")
+                    lat = parse_float(row.get("shape_pt_lat"))
+                    lon = parse_float(row.get("shape_pt_lon"))
+                    sequence = row.get("shape_pt_sequence")
+                    if not shape_id or lat is None or lon is None or sequence is None:
+                        continue
+                    try:
+                        sequence_num = int(float(sequence))
+                    except ValueError:
+                        continue
+                    shape_stop_order[shape_id].append((sequence_num, lon, lat))
 
-    trip_shape_by_route: dict[str, set[str]] = defaultdict(set)
-    trip_count_by_route: dict[str, int] = defaultdict(int)
-    shape_stop_order: dict[str, list[tuple[int, float, float]]] = defaultdict(list)
-    route_stop_ids: dict[str, set[str]] = defaultdict(set)
+        with iter_csv_from_zip(zf, "stops.txt") as stops_reader:
+            if stops_reader is None:
+                fail("stops.txt is missing")
+            stop_features = []
+            stop_points: list[tuple[float, float]] = []
+            for row in stops_reader:
+                stop_id = row.get("stop_id")
+                stop_name = row.get("stop_name")
+                lat = parse_float(row.get("stop_lat"))
+                lon = parse_float(row.get("stop_lon"))
+                if not stop_id or not stop_name or lat is None or lon is None:
+                    continue
 
-    for row in trips_rows:
-        route_id = row.get("route_id")
-        if not route_id:
-            continue
-        trip_count_by_route[route_id] += 1
-        shape_id = row.get("shape_id")
-        if shape_id:
-            trip_shape_by_route[route_id].add(shape_id)
-
-    for row in shapes_rows:
-        shape_id = row.get("shape_id")
-        lat = parse_float(row.get("shape_pt_lat"))
-        lon = parse_float(row.get("shape_pt_lon"))
-        sequence = row.get("shape_pt_sequence")
-        if not shape_id or lat is None or lon is None or sequence is None:
-            continue
-        try:
-            sequence_num = int(float(sequence))
-        except ValueError:
-            continue
-        shape_stop_order[shape_id].append((sequence_num, lon, lat))
-
-    stop_to_route_candidates: dict[str, set[str]] = defaultdict(set)
-    if stop_times_rows and trips_rows:
-        route_by_trip = {
-            row["trip_id"]: row["route_id"]
-            for row in trips_rows
-            if row.get("trip_id") and row.get("route_id")
-        }
-        for row in stop_times_rows:
-            trip_id = row.get("trip_id")
-            stop_id = row.get("stop_id")
-            if not trip_id or not stop_id:
-                continue
-            route_id = route_by_trip.get(trip_id)
-            if route_id:
-                stop_to_route_candidates[stop_id].add(route_id)
-                route_stop_ids[route_id].add(stop_id)
+                stop_points.append((lon, lat))
+                stop_features.append(
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "stop_id": stop_id,
+                            "stop_name": stop_name,
+                            "stop_code": row.get("stop_code") or "",
+                            "location_type": row.get("location_type") or "0",
+                            "route_ids": [],
+                        },
+                        "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    }
+                )
 
     route_features = []
     route_bboxes: list[list[float] | None] = []
@@ -231,36 +241,9 @@ def main() -> None:
                     "color": color,
                     "text_color": text_color,
                     "trip_count": trip_count_by_route.get(route_id, 0),
-                    "stop_count": len(route_stop_ids.get(route_id, set())),
+                    "stop_count": 0,
                 },
                 "geometry": geometry,
-            }
-        )
-
-    stop_features = []
-    stop_points: list[tuple[float, float]] = []
-
-    for row in stops_rows:
-        stop_id = row.get("stop_id")
-        stop_name = row.get("stop_name")
-        lat = parse_float(row.get("stop_lat"))
-        lon = parse_float(row.get("stop_lon"))
-        if not stop_id or not stop_name or lat is None or lon is None:
-            continue
-
-        stop_points.append((lon, lat))
-        served_routes = sorted(stop_to_route_candidates.get(stop_id, set()))
-        stop_features.append(
-            {
-                "type": "Feature",
-                "properties": {
-                    "stop_id": stop_id,
-                    "stop_name": stop_name,
-                    "stop_code": row.get("stop_code") or "",
-                    "location_type": row.get("location_type") or "0",
-                    "route_ids": served_routes,
-                },
-                "geometry": {"type": "Point", "coordinates": [lon, lat]},
             }
         )
 

@@ -7,6 +7,10 @@
 !*.md
 !*.toml
 !*.yml
+!Dockerfile*
 !Makefile
 !docs/
 !gtfs/
+!tools/
+!viewer-static/
+tools/__pycache__/

@@ -3,12 +3,11 @@ FROM --platform=linux/amd64 rust:1.94
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     protobuf-compiler \
     libssl-dev \
     libpq-dev \
-    postgresql-client \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 

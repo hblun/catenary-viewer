@@ -107,17 +107,14 @@
     async function loadStyle() {
       const style = await loadJson("/static/light-style.json");
       if (Array.isArray(style.sprite)) {
-        style.sprite = style.sprite.map((entry) => {
-          if (entry.id === "mbicons") {
-            return { ...entry, url: `${window.location.origin}/sprite-proxy/mbicons` };
-          }
-          if (entry.id === "orm") {
-            return { ...entry, url: `${window.location.origin}/sprite-proxy/orm` };
-          }
-          if (entry.id === "ormsdf") {
-            return { ...entry, url: `${window.location.origin}/sprite-proxy/ormsdf` };
-          }
-          return entry;
+        style.sprite = style.sprite.filter((entry) => entry.id === "ofm");
+      }
+      if (Array.isArray(style.layers)) {
+        style.layers = style.layers.filter((layer) => {
+          const serialized = JSON.stringify(layer);
+          return !serialized.includes("mbicons:") &&
+            !serialized.includes("orm:") &&
+            !serialized.includes("ormsdf:");
         });
       }
       return style;

@@ -15,4 +15,9 @@
 !gtfs/
 !tools/
 !viewer-static/
+backend/target/
+backend/.cargo/
+backend/temp/
+frontend/node_modules/
+frontend/.svelte-kit/
 tools/__pycache__/

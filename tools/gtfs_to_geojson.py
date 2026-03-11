@@ -4,6 +4,7 @@ import io
 import json
 import os
 import sys
+import time
 import zipfile
 from collections import defaultdict
 from contextlib import contextmanager
@@ -124,9 +125,63 @@ def write_json(path: str, payload: object) -> None:
         json.dump(payload, handle, ensure_ascii=True)
 
 
+def stable_hash(value: str) -> int:
+    result = 2166136261
+    for char in value:
+        result ^= ord(char)
+        result = (result * 16777619) & 0xFFFFFFFF
+    return result
+
+
+def color_from_palette(key: str, palette: list[str]) -> str:
+    return palette[stable_hash(key) % len(palette)]
+
+
+def mode_fallback_color(mode: str, route_id: str) -> str:
+    palettes = {
+        "rail": ["#003f7d", "#005a9c", "#0a6ebd", "#145d8f"],
+        "metro": ["#b400a6", "#e4007c", "#008ecf", "#0b72b5"],
+        "bus": ["#e21b23", "#cc2f2f", "#ff5a36", "#d9480f", "#b91c1c"],
+        "other": ["#7c3aed", "#8b5cf6", "#0f766e", "#0ea5a4"],
+    }
+    return color_from_palette(route_id, palettes.get(mode, palettes["other"]))
+
+
+def route_sort_key(route_type: str | None, trip_count: int) -> int:
+    type_rank = {
+        "2": 400,
+        "1": 350,
+        "0": 340,
+        "5": 330,
+        "12": 320,
+        "3": 200,
+        "11": 190,
+    }
+    return type_rank.get(route_type or "", 100) + min(trip_count, 80)
+
+
 def main() -> None:
     ensure_output_dir()
     archive_path = pick_archive()
+    archive_stat = os.stat(archive_path)
+    metadata_path = os.path.join(OUTPUT_DIR, "metadata.json")
+
+    if os.path.exists(metadata_path):
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as handle:
+                existing_metadata = json.load(handle)
+            existing_source = existing_metadata.get("source", {})
+            if (
+                existing_source.get("archive") == os.path.basename(archive_path)
+                and existing_source.get("size") == archive_stat.st_size
+                and int(existing_source.get("mtime", 0)) == int(archive_stat.st_mtime)
+            ):
+                print(
+                    f"GTFS source unchanged for {os.path.basename(archive_path)}; reusing generated data"
+                )
+                return
+        except Exception:
+            pass
 
     with zipfile.ZipFile(archive_path) as zf:
         with iter_csv_from_zip(zf, "routes.txt") as routes_reader:
@@ -202,9 +257,11 @@ def main() -> None:
         shape_ids = sorted(trip_shape_by_route.get(route_id, set()))
         short_name = route.get("route_short_name") or route_id
         long_name = route.get("route_long_name") or ""
-        color = clean_color(route.get("route_color"), "#0f766e")
+        color = clean_color(route.get("route_color"), "")
         text_color = clean_color(route.get("route_text_color"), "#ffffff")
         mode = route_mode(route.get("route_type"))
+        if not color:
+            color = mode_fallback_color(mode, route_id)
 
         linestrings = []
         line_points_for_bbox: list[tuple[float, float]] = []
@@ -242,6 +299,7 @@ def main() -> None:
                     "text_color": text_color,
                     "trip_count": trip_count_by_route.get(route_id, 0),
                     "stop_count": 0,
+                    "sort_key": route_sort_key(route.get("route_type"), trip_count_by_route.get(route_id, 0)),
                 },
                 "geometry": geometry,
             }
@@ -256,6 +314,12 @@ def main() -> None:
         "route_count": len(route_features),
         "stop_count": len(stop_features),
         "bbox": overall_bbox,
+        "generated_at": int(time.time()),
+        "source": {
+            "archive": os.path.basename(archive_path),
+            "size": archive_stat.st_size,
+            "mtime": int(archive_stat.st_mtime),
+        },
     }
 
     write_json(os.path.join(OUTPUT_DIR, "routes.geojson"), routes_geojson)

@@ -542,7 +542,9 @@ pub async fn gtfs_process_feed(
                         )
                     })?
             } else {
-                return Err(dir_error).context("Failed to read GTFS via gtfs_structures");
+                return Err(anyhow::Error::new(dir_error)
+                    .context("Failed to read GTFS via gtfs_structures")
+                    .into());
             }
         }
     };

@@ -27,14 +27,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target,id=catenary-pipeline-target,sharing=locked \
-    RUST_MIN_STACK=16777216 cargo build --release --bin maple --bin globeflower --bin harebell
+    RUST_MIN_STACK=16777216 cargo build --profile pipeline --bin maple --bin globeflower --bin harebell
 
 RUN mkdir -p /output /app/tiles \
-    && cp ./target/release/maple /output/ \
-    && cp ./target/release/globeflower /output/ \
-    && cp ./target/release/harebell /output/
+    && cp ./target/pipeline/maple /output/ \
+    && cp ./target/pipeline/globeflower /output/ \
+    && cp ./target/pipeline/harebell /output/
 
 WORKDIR /app
 
 EXPOSE 8080
-

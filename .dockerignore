@@ -2,6 +2,7 @@
 *
 !.git/
 !backend/
+!backend/Cargo.lock
 !frontend/
 !*.html
 !*.md

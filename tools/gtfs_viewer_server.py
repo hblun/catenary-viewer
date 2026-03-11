@@ -176,12 +176,14 @@ def static_files(subpath: str):
 
 @app.get("/sprite-proxy/<sprite_id>.<ext>")
 def sprite_proxy(sprite_id: str, ext: str):
-    base_url = SPRITE_SOURCES.get(sprite_id)
+    sprite_name = sprite_id.removesuffix("@2x")
+    scale_suffix = "@2x" if sprite_id.endswith("@2x") else ""
+    base_url = SPRITE_SOURCES.get(sprite_name)
     if not base_url or ext not in {"json", "png"}:
         abort(404)
 
     try:
-        with urllib.request.urlopen(f"{base_url}.{ext}", timeout=20) as response:
+        with urllib.request.urlopen(f"{base_url}{scale_suffix}.{ext}", timeout=20) as response:
             payload = response.read()
             content_type = response.headers.get_content_type()
     except urllib.error.HTTPError as exc:

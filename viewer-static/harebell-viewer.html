@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harebell Viewer</title>
+    <link
+      href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+      rel="stylesheet"
+    />
+    <style>
+      html,
+      body,
+      #map {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      body {
+        font-family: "Inter", system-ui, sans-serif;
+        color: #1f2937;
+      }
+
+      .panel {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        z-index: 2;
+        width: min(420px, calc(100vw - 32px));
+        padding: 18px 20px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.14);
+        backdrop-filter: blur(18px);
+      }
+
+      .panel h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        line-height: 1.1;
+      }
+
+      .panel p {
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      .chip-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+
+      .chip {
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #eef2f7;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div class="panel">
+      <h1>Harebell Pipeline</h1>
+      <p>
+        Basemap styling from Catenary, route geometry from the Maple ->
+        Globeflower -> Harebell pipeline.
+      </p>
+      <div class="chip-row">
+        <span class="chip">Vector tiles: Harebell</span>
+        <span class="chip">Region: Scotland</span>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <script>
+      async function loadStyle() {
+        const response = await fetch("/static/light-style.json");
+        const style = await response.json();
+        delete style.sprite;
+        return style;
+      }
+
+      function addTransitLayers(map) {
+        map.addSource("harebell", {
+          type: "vector",
+          tiles: [`${window.location.origin}/tiles/{z}/{x}/{y}.pbf`],
+          minzoom: 5,
+          maxzoom: 16,
+        });
+
+        map.addLayer({
+          id: "harebell-routes-casing",
+          type: "line",
+          source: "harebell",
+          "source-layer": "transit",
+          paint: {
+            "line-color": "#ffffff",
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              5,
+              2.2,
+              9,
+              4.5,
+              13,
+              7.5,
+            ],
+            "line-opacity": 0.95,
+          },
+        });
+
+        map.addLayer({
+          id: "harebell-routes",
+          type: "line",
+          source: "harebell",
+          "source-layer": "transit",
+          paint: {
+            "line-color": ["coalesce", ["get", "color"], "#0f766e"],
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              5,
+              1.2,
+              9,
+              2.8,
+              13,
+              5,
+            ],
+            "line-opacity": 0.98,
+          },
+        });
+
+        map.addLayer({
+          id: "harebell-route-labels",
+          type: "symbol",
+          source: "harebell",
+          "source-layer": "transit",
+          minzoom: 11,
+          layout: {
+            "symbol-placement": "line",
+            "text-field": ["coalesce", ["get", "route_id"], ["get", "line_id"]],
+            "text-size": 13,
+            "text-font": ["Noto Sans Regular"],
+          },
+          paint: {
+            "text-color": "#111827",
+            "text-halo-color": "rgba(255,255,255,0.95)",
+            "text-halo-width": 1.2,
+          },
+        });
+      }
+
+      (async () => {
+        const map = new maplibregl.Map({
+          container: "map",
+          style: await loadStyle(),
+          center: [-3.2, 55.95],
+          zoom: 9.2,
+          hash: true,
+        });
+
+        map.addControl(new maplibregl.NavigationControl(), "top-right");
+
+        map.on("load", () => {
+          addTransitLayers(map);
+        });
+      })().catch((error) => {
+        document.body.innerHTML =
+          `<pre style="padding:24px;font:14px/1.5 monospace">` +
+          String(error?.stack || error) +
+          `</pre>`;
+      });
+    </script>
+  </body>
+</html>

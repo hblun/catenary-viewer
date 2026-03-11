@@ -1,0 +1,129 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-catenary}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-catenary}
+      POSTGRES_DB: ${POSTGRES_DB:-catenary}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-catenary} -d ${POSTGRES_DB:-catenary}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - harebell_postgres:/var/lib/postgresql/data
+
+  maple-local:
+    build:
+      context: .
+      dockerfile: Dockerfile.maple
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
+      GTFS_ZIP_TEMP: /tmp/gtfs-zip
+      GTFS_UNCOMPRESSED_TEMP: /tmp/gtfs-uncompressed
+      DELETE_BEFORE_INGEST: ${DELETE_BEFORE_INGEST:-true}
+    command: >
+      sh -lc '
+      until pg_isready -h postgres -p 5432 -U "${POSTGRES_USER:-catenary}"; do sleep 2; done &&
+      diesel migration run --database-url "$DATABASE_URL" &&
+      /output/maple --no-elastic local-ingest
+      --input-zip "/gtfs/${GTFS_FILE:-filtered_scotland_gtfs.zip}"
+      --feed-id "${GTFS_FEED_ID:-local-scotland}"
+      --chateau-id "${GTFS_CHATEAU_ID:-scotland}"
+      '
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ${GTFS_HOST_DIR:-./gtfs}:/gtfs:ro
+
+  globeflower:
+    build:
+      context: .
+      dockerfile: Dockerfile.globeflower
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
+    command: >
+      sh -lc '
+      /output/globeflower
+      --region "${GLOBEFLOWER_REGION:-scotland}"
+      --osm-dir /osm
+      --output-dir /pipeline
+      '
+    depends_on:
+      postgres:
+        condition: service_healthy
+      maple-local:
+        condition: service_completed_successfully
+    volumes:
+      - ${OSM_HOST_DIR:-./osm}:/osm:ro
+      - harebell_pipeline:/pipeline
+
+  harebell-export:
+    build:
+      context: .
+      dockerfile: Dockerfile.harebell
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
+    command: >
+      sh -lc '
+      /output/harebell export
+      --region "${GLOBEFLOWER_REGION:-scotland}"
+      --graph-path "/pipeline/globeflower_graph_${GLOBEFLOWER_REGION:-scotland}.bin"
+      --output-dir /tiles
+      '
+    depends_on:
+      postgres:
+        condition: service_healthy
+      globeflower:
+        condition: service_completed_successfully
+    volumes:
+      - harebell_pipeline:/pipeline
+      - harebell_tiles:/tiles
+
+  harebell:
+    build:
+      context: .
+      dockerfile: Dockerfile.harebell
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
+    command:
+      [
+        "/output/harebell",
+        "serve",
+        "--address",
+        "0.0.0.0",
+        "--port",
+        "8080",
+        "--tiles-dir",
+        "/tiles",
+      ]
+    depends_on:
+      harebell-export:
+        condition: service_completed_successfully
+    ports:
+      - "${HAREBELL_PORT:-8080}:8080"
+    volumes:
+      - harebell_tiles:/tiles:ro
+
+  viewer:
+    image: nginx:alpine
+    depends_on:
+      - harebell
+    ports:
+      - "${VIEWER_PORT:-8081}:80"
+    volumes:
+      - ./viewer-static/harebell-viewer.html:/usr/share/nginx/html/index.html:ro
+      - ./viewer-static/harebell-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend/static:/usr/share/nginx/html/static:ro
+
+volumes:
+  harebell_postgres:
+  harebell_pipeline:
+  harebell_tiles:

@@ -42,9 +42,9 @@ use tikv_jemallocator::Jemalloc;
 static GLOBAL: Jemalloc = Jemalloc;
 
 use ahash::AHashMap;
-use catenary::GirolleFeedDownloadResult;
-use catenary::postgres_tools::CatenaryPostgresPool;
 use catenary::postgres_tools::make_async_pool;
+use catenary::postgres_tools::CatenaryPostgresPool;
+use catenary::GirolleFeedDownloadResult;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
 use futures::StreamExt;
@@ -52,6 +52,8 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fs;
+use std::fs::File;
+use std::io::BufReader;
 mod delete_overlapping_feeds_dmfr;
 use std::sync::Arc;
 pub mod correction_of_transfers;
@@ -107,6 +109,19 @@ enum Commands {
     DeleteStaleAttempts {
         #[arg(long)]
         feed_id: String,
+    },
+    /// Ingest a local GTFS zip directly, bypassing Transitland/DMFR
+    LocalIngest {
+        #[arg(long)]
+        input_zip: String,
+        #[arg(long)]
+        feed_id: String,
+        #[arg(long)]
+        chateau_id: String,
+        #[arg(long)]
+        attempt_id: Option<String>,
+        #[arg(long, default_value_t = false)]
+        wipe_feed: bool,
     },
 }
 
@@ -170,6 +185,25 @@ async fn run_ingest() -> Result<(), Box<dyn Error + std::marker::Send + Sync>> {
     } else {
         None
     };
+
+    if let Some(Commands::LocalIngest {
+        input_zip,
+        feed_id,
+        chateau_id,
+        attempt_id,
+        wipe_feed,
+    }) = &args.command
+    {
+        return run_local_ingest(
+            input_zip.clone(),
+            feed_id.clone(),
+            chateau_id.clone(),
+            attempt_id.clone(),
+            *wipe_feed,
+            elasticclient.clone(),
+        )
+        .await;
+    }
 
     let use_girolle = args.use_girolle.unwrap_or(false);
 
@@ -1096,6 +1130,254 @@ async fn run_ingest() -> Result<(), Box<dyn Error + std::marker::Send + Sync>> {
     }
 
     Ok(())
+}
+
+async fn run_local_ingest(
+    input_zip: String,
+    feed_id: String,
+    chateau_id: String,
+    attempt_id: Option<String>,
+    wipe_feed_flag: bool,
+    elasticclient: Option<Arc<elasticsearch::Elasticsearch>>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    println!(
+        "Running local GTFS ingest for feed {} from {}",
+        feed_id, input_zip
+    );
+
+    let gtfs_temp_storage = std::env::var("GTFS_ZIP_TEMP").unwrap_or_else(|_| "./temp-zip".into());
+    let gtfs_uncompressed_temp_storage =
+        std::env::var("GTFS_UNCOMPRESSED_TEMP").unwrap_or_else(|_| "./temp-uncompressed".into());
+
+    fs::create_dir_all(&gtfs_temp_storage)?;
+    fs::create_dir_all(&gtfs_uncompressed_temp_storage)?;
+
+    let zip_path = std::path::Path::new(&input_zip);
+    if !zip_path.exists() {
+        return Err(format!("GTFS zip not found: {}", input_zip).into());
+    }
+
+    let zip_bytes = fs::read(zip_path)?;
+    let zip_hash = seahash::hash(&zip_bytes);
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let attempt_id = attempt_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+    let staged_zip_path = format!("{}/{}.zip", gtfs_temp_storage, feed_id);
+    fs::write(&staged_zip_path, &zip_bytes)?;
+
+    let extracted_feed_dir = std::path::Path::new(&gtfs_uncompressed_temp_storage).join(&feed_id);
+    if extracted_feed_dir.exists() {
+        fs::remove_dir_all(&extracted_feed_dir)?;
+    }
+    fs::create_dir_all(&extracted_feed_dir)?;
+
+    let reader = BufReader::new(File::open(&staged_zip_path)?);
+    zip_extract::extract(reader, &extracted_feed_dir, true)?;
+
+    let downloaded_feed = DownloadedFeedsInformation {
+        feed_id: feed_id.clone(),
+        url: format!("file://{}", zip_path.display()),
+        hash: Some(zip_hash),
+        download_timestamp_ms: now_ms as u64,
+        operation_success: true,
+        ingest: true,
+        byte_size: Some(zip_bytes.len() as u64),
+        duration_download: Some(0),
+        http_response_code: Some("local-file".to_string()),
+    };
+
+    let arc_conn_pool: Arc<CatenaryPostgresPool> = Arc::new(make_async_pool().await?);
+    let mut conn = arc_conn_pool.get().await?;
+
+    let static_download_attempt = catenary::models::StaticDownloadAttempt {
+        onestop_feed_id: feed_id.clone(),
+        file_hash: Some(zip_hash.to_string()),
+        downloaded_unix_time_ms: now_ms,
+        ingested: false,
+        url: downloaded_feed.url.clone(),
+        failed: false,
+        ingestion_version: MAPLE_INGESTION_VERSION,
+        mark_for_redo: false,
+        http_response_code: downloaded_feed.http_response_code.clone(),
+    };
+
+    use catenary::schema::gtfs::in_progress_static_ingests::dsl::in_progress_static_ingests;
+    use catenary::schema::gtfs::ingested_static::dsl::ingested_static;
+    use catenary::schema::gtfs::static_download_attempts::dsl::static_download_attempts;
+
+    diesel::insert_into(static_download_attempts)
+        .values(&static_download_attempt)
+        .on_conflict_do_nothing()
+        .execute(&mut conn)
+        .await?;
+
+    let folder_hash = catenary::hashfolder::hash_folder_sip_zero(&extracted_feed_dir)
+        .await
+        .ok()
+        .map(|hash| hash.to_string());
+
+    let existing_matching_hash = ingested_static
+        .filter(
+            catenary::schema::gtfs::ingested_static::dsl::hash_of_file_contents
+                .eq(folder_hash.clone()),
+        )
+        .filter(catenary::schema::gtfs::ingested_static::dsl::deleted.eq(false))
+        .filter(
+            catenary::schema::gtfs::ingested_static::dsl::ingestion_version
+                .eq(MAPLE_INGESTION_VERSION),
+        )
+        .select(catenary::models::IngestedStatic::as_select())
+        .load::<catenary::models::IngestedStatic>(&mut conn)
+        .await?;
+
+    if !existing_matching_hash.is_empty() && std::env::var("FORCE_INGEST_ALL").is_err() {
+        println!(
+            "Skipping ingest for {} because identical file contents already exist",
+            feed_id
+        );
+        return Ok(());
+    }
+
+    let wipe_feed = wipe_feed_flag
+        || matches!(
+            std::env::var("DELETE_BEFORE_INGEST")
+                .ok()
+                .as_deref()
+                .map(str::to_ascii_lowercase)
+                .as_deref(),
+            Some("true")
+        );
+    if wipe_feed {
+        wipe_whole_feed(&feed_id, Arc::clone(&arc_conn_pool)).await?;
+    }
+
+    let in_progress = catenary::models::InProgressStaticIngest {
+        onestop_feed_id: feed_id.clone(),
+        file_hash: zip_hash.to_string(),
+        attempt_id: attempt_id.clone(),
+        ingest_start_unix_time_ms: now_ms,
+    };
+
+    diesel::insert_into(in_progress_static_ingests)
+        .values(&in_progress)
+        .on_conflict_do_nothing()
+        .execute(&mut conn)
+        .await?;
+
+    drop(conn);
+
+    let start_time = chrono::Utc::now().timestamp_millis();
+    let gtfs_process_result = gtfs_process_feed(
+        &gtfs_uncompressed_temp_storage,
+        &feed_id,
+        Arc::clone(&arc_conn_pool),
+        &chateau_id,
+        &attempt_id,
+        &downloaded_feed,
+        elasticclient.as_deref(),
+    )
+    .await;
+
+    let mut conn = arc_conn_pool.get().await?;
+
+    match gtfs_process_result {
+        Ok(summary) => {
+            diesel::update(
+                static_download_attempts
+                    .filter(catenary::schema::gtfs::static_download_attempts::dsl::onestop_feed_id.eq(&feed_id))
+                    .filter(
+                        catenary::schema::gtfs::static_download_attempts::dsl::downloaded_unix_time_ms
+                            .eq(now_ms),
+                    ),
+            )
+            .set(catenary::schema::gtfs::static_download_attempts::dsl::ingested.eq(true))
+            .execute(&mut conn)
+            .await?;
+
+            let ingested_static_row = catenary::models::IngestedStatic {
+                onestop_feed_id: feed_id.clone(),
+                attempt_id: attempt_id.clone(),
+                languages_avaliable: vec![],
+                file_hash: zip_hash.to_string(),
+                ingest_start_unix_time_ms: start_time,
+                ingest_end_unix_time_ms: chrono::Utc::now().timestamp_millis(),
+                ingest_duration_ms: (chrono::Utc::now().timestamp_millis() - start_time) as i32,
+                ingesting_in_progress: false,
+                ingestion_errored: false,
+                ingestion_successfully_finished: true,
+                deleted: false,
+                default_lang: summary.default_lang.clone(),
+                production: false,
+                feed_expiration_date: summary.feed_end_date,
+                feed_start_date: summary.feed_start_date,
+                ingestion_version: MAPLE_INGESTION_VERSION,
+                hash_of_file_contents: folder_hash,
+            };
+
+            diesel::insert_into(ingested_static)
+                .values(&ingested_static_row)
+                .on_conflict_do_nothing()
+                .execute(&mut conn)
+                .await?;
+
+            assign_production_tables::assign_production_tables(
+                &feed_id,
+                &attempt_id,
+                Arc::clone(&arc_conn_pool),
+                summary.bbox,
+            )
+            .await?;
+
+            diesel::delete(
+                in_progress_static_ingests
+                    .filter(
+                        catenary::schema::gtfs::in_progress_static_ingests::dsl::onestop_feed_id
+                            .eq(&feed_id),
+                    )
+                    .filter(
+                        catenary::schema::gtfs::in_progress_static_ingests::dsl::attempt_id
+                            .eq(&attempt_id),
+                    ),
+            )
+            .execute(&mut conn)
+            .await?;
+
+            println!(
+                "Local GTFS ingest complete for {} / {}",
+                feed_id, attempt_id
+            );
+            Ok(())
+        }
+        Err(error) => {
+            diesel::update(
+                static_download_attempts
+                    .filter(catenary::schema::gtfs::static_download_attempts::dsl::onestop_feed_id.eq(&feed_id))
+                    .filter(
+                        catenary::schema::gtfs::static_download_attempts::dsl::downloaded_unix_time_ms
+                            .eq(now_ms),
+                    ),
+            )
+            .set(catenary::schema::gtfs::static_download_attempts::dsl::failed.eq(true))
+            .execute(&mut conn)
+            .await?;
+
+            diesel::delete(
+                in_progress_static_ingests
+                    .filter(
+                        catenary::schema::gtfs::in_progress_static_ingests::dsl::onestop_feed_id
+                            .eq(&feed_id),
+                    )
+                    .filter(
+                        catenary::schema::gtfs::in_progress_static_ingests::dsl::attempt_id
+                            .eq(&attempt_id),
+                    ),
+            )
+            .execute(&mut conn)
+            .await?;
+
+            Err(error)
+        }
+    }
 }
 
 async fn run_match_only(feed_id: String) -> Result<(), Box<dyn Error + std::marker::Send + Sync>> {

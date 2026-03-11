@@ -9,6 +9,7 @@ use std::str::FromStr;
 /// Geographic regions for rail graph processing
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Region {
+    Scotland,
     NorthAmerica,
     Europe,
     Japan,
@@ -20,6 +21,7 @@ pub enum Region {
 impl Region {
     /// All available regions
     pub const ALL: &'static [Region] = &[
+        Region::Scotland,
         Region::NorthAmerica,
         Region::Europe,
         Region::Japan,
@@ -31,6 +33,12 @@ impl Region {
     /// Get the configuration for this region
     pub fn config(&self) -> RegionConfig {
         match self {
+            Region::Scotland => RegionConfig {
+                name: "scotland",
+                display_name: "Scotland",
+                bbox: (-8.0, 54.5, -0.5, 61.2),
+                osm_pbf_suffix: "scotland",
+            },
             Region::NorthAmerica => RegionConfig {
                 name: "north-america",
                 display_name: "North America",
@@ -99,6 +107,7 @@ impl FromStr for Region {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
+            "scotland" | "gb-scotland" | "scot" => Ok(Region::Scotland),
             "north-america" | "northamerica" | "na" => Ok(Region::NorthAmerica),
             "europe" | "eu" => Ok(Region::Europe),
             "japan" | "jp" => Ok(Region::Japan),
@@ -106,7 +115,7 @@ impl FromStr for Region {
             "new-zealand" | "newzealand" | "nz" => Ok(Region::NewZealand),
             "malaysia-singapore-brunei" | "malaysia" | "sg" => Ok(Region::MalaysiaSingaporeBrunei),
             _ => Err(format!(
-                "Unknown region: '{}'. Valid options: north-america, europe, japan, australia, new-zealand, malaysia-singapore-brunei",
+                "Unknown region: '{}'. Valid options: scotland, north-america, europe, japan, australia, new-zealand, malaysia-singapore-brunei",
                 s
             )),
         }
@@ -156,6 +165,7 @@ mod tests {
 
     #[test]
     fn test_region_from_str() {
+        assert_eq!(Region::from_str("scotland").unwrap(), Region::Scotland);
         assert_eq!(Region::from_str("europe").unwrap(), Region::Europe);
         assert_eq!(Region::from_str("EU").unwrap(), Region::Europe);
         assert_eq!(
@@ -167,6 +177,10 @@ mod tests {
 
     #[test]
     fn test_contains_point() {
+        let scotland = Region::Scotland.config();
+        assert!(scotland.contains_point(-3.19, 55.95));
+        assert!(!scotland.contains_point(2.35, 48.86));
+
         let europe = Region::Europe.config();
         // Paris should be in Europe
         assert!(europe.contains_point(2.35, 48.86));

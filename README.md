@@ -1,43 +1,67 @@
-# Catenary Viewer-Only Stack
+# Catenary Transit Rendering Stack
 
-A reduced, viewer-first transit map stack focused on UK/Scotland data. Renders routes and stops cleanly with support for click, hover, multi-select, and filter interactions.
+This repo now contains two runnable paths:
+
+1. A lightweight GTFS viewer for fast inspection of a raw feed
+2. The actual Maple -> Globeflower -> Harebell ingestion and tile pipeline used to get much closer to Catenary route rendering parity
 
 ## Architecture
 
-```
-GTFS → Maple → PostGIS → Harebell → MVT Tiles → Viewer (MapLibre)
-                                    ↓
-                            Birch (Search API)
+```text
+GTFS zip -> Maple local-ingest -> PostGIS
+OSM PBF  -> Globeflower       -> graph bin
+PostGIS + graph bin -> Harebell export -> vector tiles -> Harebell serve / Viewer
 ```
 
-## Quick Start (Ubuntu Server)
+## Harebell Pipeline In Repo
+
+Yes. The real ingestion/rendering pieces are in this repo:
+
+- Maple: [`backend/src/maple/main.rs`](/Users/home/Devwork/catenary/backend/src/maple/main.rs)
+- Globeflower: [`backend/src/globeflower/main.rs`](/Users/home/Devwork/catenary/backend/src/globeflower/main.rs)
+- Harebell: [`backend/src/harebell/main.rs`](/Users/home/Devwork/catenary/backend/src/harebell/main.rs)
+
+The missing operational piece was a direct local GTFS ingest path. That now exists as:
 
 ```bash
-# 1. Install dependencies
-sudo apt install -y protobuf-compiler pkg-config libssl-dev build-essential cmake git
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# 2. Clone and build
-git clone https://github.com/CatenaryTransit/catenary-backend.git
-cd catenary-backend
-cargo build --release --bin maple harebell birch
-
-# 3. Start PostgreSQL
-docker run -d --name catenary_postgres \
-  -e POSTGRES_USER=catenary -e POSTGRES_PASSWORD=catenary -e POSTGRES_DB=catenary \
-  -p 5432:5432 postgis/postgis:16-3.4
-
-# 4. Ingest GTFS
-export DATABASE_URL="postgres://catenary:catenary@localhost:5432/catenary"
-./target/release/maple --gtfs /path/to/scotland-gtfs.zip
-
-# 5. Start tile server
-./target/release/harebell serve --port 8080
-
-# 6. View at http://localhost:8081
+maple --no-elastic local-ingest \
+  --input-zip /path/to/feed.zip \
+  --feed-id local-scotland \
+  --chateau-id scotland
 ```
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed instructions.
+## Harebell Parity Pipeline In Docker
+
+This is the path to use if you want Harebell-rendered tiles rather than the lightweight raw-shapes viewer.
+
+Required inputs:
+- A GTFS zip
+- A rail OSM PBF for the target region
+
+Scotland example:
+
+```bash
+GTFS_HOST_DIR=/home/youruser/gtfs \
+GTFS_FILE=filtered_scotland_gtfs.zip \
+GTFS_FEED_ID=filtered-scotland \
+GTFS_CHATEAU_ID=scotland \
+OSM_HOST_DIR=/home/youruser/osm \
+GLOBEFLOWER_REGION=scotland \
+docker compose -f docker-compose.harebell-pipeline.yml up --build
+```
+
+Expected OSM file in `${OSM_HOST_DIR}` for the Scotland region:
+
+```text
+railonly-scotland-latest.osm.pbf
+```
+
+Ports:
+- `8080`: Harebell tile server
+- `8081`: simple viewer proxied to Harebell tiles
+
+The compose file for this stack is:
+- [`docker-compose.harebell-pipeline.yml`](/Users/home/Devwork/catenary/docker-compose.harebell-pipeline.yml)
 
 ## Fastest Path: View Your Own GTFS In Docker
 
@@ -70,14 +94,25 @@ docker compose -f docker-compose.gtfs-viewer.yml up --build
 - This path uses the existing Catenary basemap styling and overlays routes/stops extracted from your GTFS.
 - It does not depend on the unfinished Maple/Harebell viewer-only refactor.
 
+## Lightweight GTFS Viewer
+
+If you only want to inspect a feed quickly and do not need the full Harebell render path yet:
+
+```bash
+docker compose -f docker-compose.gtfs-viewer.yml up --build
+```
+
+That path uses the Catenary basemap but not the real Globeflower/Harebell graph pipeline.
+
 ## Services
 
 | Service | Purpose | Command |
 |---------|---------|---------|
-| **Maple** | GTFS ingestion | `./target/release/maple --gtfs <file>` |
-| **Harebell** | Tile server | `./target/release/harebell serve --port 8080` |
+| **Maple** | GTFS ingestion | `./target/release/maple --no-elastic local-ingest --input-zip <file> --feed-id <id> --chateau-id <chateau>` |
+| **Globeflower** | Support graph builder | `./target/release/globeflower --region scotland --osm-dir <dir> --output-dir <dir>` |
+| **Harebell** | Tile exporter/server | `./target/release/harebell export ...` / `./target/release/harebell serve --port 8080` |
 | **Birch** | Search API | `./target/release/birch` |
-| **Viewer** | Web UI | `python3 -m http.server 8081` |
+| **Viewer** | Web UI | `docker compose -f docker-compose.harebell-pipeline.yml up viewer` |
 
 ## Features
 
@@ -116,9 +151,8 @@ docker compose -f docker-compose.gtfs-viewer.yml up --build
 - [Tile Schema](docs/05-tile-schema.md)
 - [Viewer Interactions](docs/06-viewer-interactions.md)
 
-## What's Removed
+## Notes
 
-- Routing/trip planning (Edelweiss)
-- Realtime vehicle tracking (Aspen, Alpenrose, Spruce)
-- Graph generation (Gentian, Linnaea)
-- OSM preprocessing (Avens)
+- `docker-compose.yml` in the repo root is not the full Harebell pipeline.
+- The new direct-local GTFS ingest path bypasses Transitland/DMFR, which is what makes local Scotland feeds practical here.
+- Globeflower now includes a `scotland` region preset.

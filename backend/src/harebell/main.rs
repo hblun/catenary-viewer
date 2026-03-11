@@ -1,6 +1,7 @@
 use actix_cors::Cors;
-use actix_web::{App, HttpResponse, HttpServer, Responder, web};
+use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use clap::Parser;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 mod config;
@@ -26,6 +27,8 @@ enum Command {
         address: String,
         #[arg(short, long, default_value_t = 8080)]
         port: u16,
+        #[arg(long, default_value = "tiles_output")]
+        tiles_dir: PathBuf,
     },
     /// Export tiles for a region
     Export {
@@ -33,6 +36,10 @@ enum Command {
         /// If not specified, loads globeflower_graph.bin
         #[arg(long)]
         region: Option<String>,
+        #[arg(long)]
+        graph_path: Option<PathBuf>,
+        #[arg(long)]
+        output_dir: Option<PathBuf>,
     },
 }
 
@@ -53,15 +60,22 @@ async fn main() -> std::io::Result<()> {
 
     match cli.cmd {
         // Assuming cli.command is cli.cmd
-        Command::Serve { port, address } => {
+        Command::Serve {
+            port,
+            address,
+            tiles_dir,
+        } => {
             println!("Starting static tile server on {}:{}", address, port);
-            println!("Serving tiles from tiles_output/");
+            println!("Serving tiles from {}", tiles_dir.display());
 
             // Start Server
             HttpServer::new(move || {
                 let cors = Cors::permissive();
                 App::new()
                     .wrap(cors)
+                    .app_data(web::Data::new(server::TileServerConfig {
+                        tiles_dir: tiles_dir.clone(),
+                    }))
                     // No more graph data needed
                     .configure(server::config)
             })
@@ -69,25 +83,32 @@ async fn main() -> std::io::Result<()> {
             .run()
             .await
         }
-        Command::Export { region } => {
+        Command::Export {
+            region,
+            graph_path,
+            output_dir,
+        } => {
             println!("Starting Static MVT Generation...");
 
             // Determine graph file and output directory based on region
-            let (graph_file, output_dir) = match &region {
-                Some(r) => {
+            let graph_file = match (&graph_path, &region) {
+                (Some(path), _) => path.display().to_string(),
+                (None, Some(r)) => {
                     let graph_file = format!("globeflower_graph_{}.bin", r);
-                    let output_dir = format!("tiles_output/{}", r);
                     println!("Processing region: {} (graph file: {})", r, graph_file);
-                    (graph_file, output_dir)
+                    graph_file
                 }
-                None => {
+                (None, None) => {
                     println!("No region specified, using default globeflower_graph.bin");
-                    (
-                        "globeflower_graph.bin".to_string(),
-                        "tiles_output".to_string(),
-                    )
+                    "globeflower_graph.bin".to_string()
                 }
             };
+            let output_dir = output_dir
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| match &region {
+                    Some(r) => format!("tiles_output/{}", r),
+                    None => "tiles_output".to_string(),
+                });
 
             // Load Graph
             let loader = loader::Loader::new(graph_file, pool);

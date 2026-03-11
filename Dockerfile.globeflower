@@ -1,4 +1,5 @@
-FROM --platform=linux/amd64 rust:1.80
+# syntax=docker/dockerfile:1.7
+FROM --platform=linux/amd64 rust:1.94
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -15,9 +16,11 @@ COPY backend/Cargo.toml ./
 COPY backend/src ./src
 COPY backend/migrations ./migrations
 COPY backend/diesel.toml ./
-COPY backend/rust-toolchain.toml ./
 
-RUN RUST_MIN_STACK=16777216 cargo build --release --bin globeflower
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    RUST_MIN_STACK=16777216 cargo build --release --bin globeflower
 
 RUN mkdir -p /output && cp ./target/release/globeflower /output/
 

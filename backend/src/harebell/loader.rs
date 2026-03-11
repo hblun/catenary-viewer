@@ -81,7 +81,7 @@ impl Loader {
         let file = File::open(&self.graph_path)?;
         let mut reader = BufReader::new(file);
         let export_graph: SerializableExportGraph =
-            bincode::serde::decode_from_std_read(&mut reader, bincode::config::legacy())?;
+            bincode::serde::decode_from_std_read(&mut reader, bincode::config::standard())?;
 
         println!(
             "Loaded Bincode graph: {} clusters, {} edges",

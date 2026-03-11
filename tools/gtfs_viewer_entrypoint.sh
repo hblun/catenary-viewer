@@ -45,5 +45,10 @@ Path("/app/site/data/metadata.json").write_text(json.dumps(payload, ensure_ascii
 PY
   fi
 ) &
+PREP_PID=$!
 
-exec python /app/gtfs_viewer_server.py
+python /app/gtfs_viewer_server.py &
+SERVER_PID=$!
+
+wait "$PREP_PID"
+wait "$SERVER_PID"

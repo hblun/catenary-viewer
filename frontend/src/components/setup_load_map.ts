@@ -234,7 +234,7 @@ export async function setup_load_map(
 	map.on('remove', () => {
 		clearInterval(updateInterval);
 		RASTER_SOURCES.forEach(({ id }) => map.removeSource(id));
-		RAIL_SHAPES.forEach(({ id }) => map.removeSource(id));
+		SHAPES.forEach(({ id }) => map.removeSource(id));
 		STOP_SOURCES.forEach(({ id }) => map.removeSource(id));
 	});
 }

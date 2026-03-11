@@ -133,11 +133,14 @@
 
     function renderMetadata(metadata) {
       if (metadata.error) {
-        summary.textContent = "GTFS data failed to load.";
+        const isPreparing = String(metadata.error).toLowerCase().includes("still being prepared");
+        summary.textContent = isPreparing ? "Preparing GTFS data..." : "GTFS data failed to load.";
         errorBox.style.display = "block";
         errorBox.textContent = metadata.error;
       } else {
         summary.textContent = `${metadata.archive} · ${metadata.route_count} routes · ${metadata.stop_count} stops`;
+        errorBox.style.display = "none";
+        errorBox.textContent = "";
       }
       badges.innerHTML = "";
       const labels = [
@@ -185,9 +188,8 @@
 
         map.addControl(new maplibregl.NavigationControl(), "top-right");
 
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve) => {
           map.once("load", resolve);
-          map.once("error", (event) => reject(event && event.error ? event.error : new Error("Map style failed to load")));
         });
 
         const metadata = await loadJson("/data/metadata.json");

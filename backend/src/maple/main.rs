@@ -1459,5 +1459,8 @@ async fn run_match_only(feed_id: String) -> Result<(), Box<dyn Error + std::mark
 
 #[tokio::main]
 async fn main() {
-    let _ = run_ingest().await;
+    if let Err(error) = run_ingest().await {
+        eprintln!("Maple ingest failed: {error}");
+        std::process::exit(1);
+    }
 }

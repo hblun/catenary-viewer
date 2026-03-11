@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
 import json
 import os
+import urllib.error
+import urllib.request
 from pathlib import Path
 from threading import Lock
 
 import mercantile
 import mapbox_vector_tile
-from flask import Flask, Response, jsonify, send_from_directory
+from flask import Flask, Response, abort, jsonify, send_from_directory
 from shapely.geometry import shape, mapping, box
 
 
 SITE_DIR = Path("/app/site")
 DATA_DIR = SITE_DIR / "data"
 STATIC_DIR = SITE_DIR / "static"
+SPRITE_SOURCES = {
+    "mbicons": "https://moreicons.catenarymaps.org/sprite",
+    "orm": "https://maps.catenarymaps.org/orm_sprite_symbols/symbols",
+    "ormsdf": "https://maps.catenarymaps.org/orm_sdf_sprite_symbols/symbols",
+}
 
 app = Flask(__name__, static_folder=None)
 STATE_LOCK = Lock()
@@ -165,6 +172,33 @@ def index():
 @app.get("/static/<path:subpath>")
 def static_files(subpath: str):
     return send_from_directory(STATIC_DIR, subpath)
+
+
+@app.get("/sprite-proxy/<sprite_id>.<ext>")
+def sprite_proxy(sprite_id: str, ext: str):
+    base_url = SPRITE_SOURCES.get(sprite_id)
+    if not base_url or ext not in {"json", "png"}:
+        abort(404)
+
+    try:
+        with urllib.request.urlopen(f"{base_url}.{ext}", timeout=20) as response:
+            payload = response.read()
+            content_type = response.headers.get_content_type()
+    except urllib.error.HTTPError as exc:
+        return Response(status=exc.code)
+    except Exception:
+        return Response(status=502)
+
+    if ext == "json":
+        content_type = "application/json"
+    elif ext == "png":
+        content_type = "image/png"
+
+    return Response(
+        payload,
+        mimetype=content_type,
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/data/metadata.json")

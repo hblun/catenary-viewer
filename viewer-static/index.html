@@ -96,21 +96,31 @@
       return ["coalesce", ["get", "color"], "#c62828"];
     }
 
-    const map = new maplibregl.Map({
-      container: "map",
-      style: "/static/light-style.json",
-      center: [-4.25, 56.75],
-      zoom: 6
-    });
-
-    map.addControl(new maplibregl.NavigationControl(), "top-right");
-
     async function loadJson(path) {
       const response = await fetch(path);
       if (!response.ok) {
         throw new Error(`Failed to load ${path}: ${response.status}`);
       }
       return response.json();
+    }
+
+    async function loadStyle() {
+      const style = await loadJson("/static/light-style.json");
+      if (Array.isArray(style.sprite)) {
+        style.sprite = style.sprite.map((entry) => {
+          if (entry.id === "mbicons") {
+            return { ...entry, url: `${window.location.origin}/sprite-proxy/mbicons` };
+          }
+          if (entry.id === "orm") {
+            return { ...entry, url: `${window.location.origin}/sprite-proxy/orm` };
+          }
+          if (entry.id === "ormsdf") {
+            return { ...entry, url: `${window.location.origin}/sprite-proxy/ormsdf` };
+          }
+          return entry;
+        });
+      }
+      return style;
     }
 
     function fitToBbox(bbox) {
@@ -164,8 +174,25 @@
       `;
     }
 
-    map.on("load", async () => {
+    let map;
+
+    async function bootstrap() {
       try {
+        const style = await loadStyle();
+        map = new maplibregl.Map({
+          container: "map",
+          style,
+          center: [-4.25, 56.75],
+          zoom: 6
+        });
+
+        map.addControl(new maplibregl.NavigationControl(), "top-right");
+
+        await new Promise((resolve, reject) => {
+          map.once("load", resolve);
+          map.once("error", (event) => reject(event && event.error ? event.error : new Error("Map style failed to load")));
+        });
+
         const metadata = await loadJson("/data/metadata.json");
 
         renderMetadata(metadata);
@@ -304,7 +331,9 @@
         errorBox.style.display = "block";
         errorBox.textContent = String(error.message || error);
       }
-    });
+    }
+
+    bootstrap();
   </script>
 </body>
 </html>

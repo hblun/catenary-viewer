@@ -31,7 +31,7 @@ services:
       DELETE_BEFORE_INGEST: ${DELETE_BEFORE_INGEST:-true}
     command: >
       sh -lc '
-      diesel migration run --database-url "$$DATABASE_URL" &&
+      /output/diesel migration run --database-url "$$DATABASE_URL" &&
       /output/maple --no-elastic local-ingest
       --input-zip "/gtfs/${GTFS_FILE:-filtered_scotland_gtfs.zip}"
       --feed-id "${GTFS_FEED_ID:-local-scotland}"

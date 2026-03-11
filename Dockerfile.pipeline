@@ -30,6 +30,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/app/target,id=catenary-pipeline-target,sharing=locked \
     RUST_MIN_STACK=16777216 cargo build --profile pipeline --bin maple --bin globeflower --bin harebell \
     && mkdir -p /output /app/tiles \
+    && cp /usr/local/cargo/bin/diesel /output/ \
     && cp ./target/pipeline/maple /output/ \
     && cp ./target/pipeline/globeflower /output/ \
     && cp ./target/pipeline/harebell /output/

@@ -10,8 +10,8 @@ use tikv_jemalloc_ctl::{epoch, thread};
 use crate::gtfs_handlers::colour_correction;
 use crate::gtfs_handlers::colour_correction::fix_background_colour_rgb_feed_route;
 use crate::gtfs_handlers::colour_correction::fix_foreground_colour_rgb_feed;
-use crate::gtfs_handlers::shape_colour_calculator::ShapeToColourResponse;
 use crate::gtfs_handlers::shape_colour_calculator::shape_to_colour;
+use crate::gtfs_handlers::shape_colour_calculator::ShapeToColourResponse;
 use crate::gtfs_handlers::stops_associated_items::*;
 use crate::gtfs_ingestion_sequence::calendar_into_postgres::calendar_into_postgres;
 use crate::gtfs_ingestion_sequence::extra_stop_to_stop_shapes_into_postgres::insert_stop_to_stop_geometry;
@@ -39,14 +39,14 @@ use geo::BoundingRect;
 use gtfs_structures::ContinuousPickupDropOff;
 use gtfs_structures::FeedInfo;
 use gtfs_structures::Gtfs;
-use gtfs_translations::TranslationResult;
 use gtfs_translations::translation_csv_text_to_translations;
+use gtfs_translations::TranslationResult;
 use itertools::Itertools;
 use language_tags::LanguageTag;
 use prost::Message;
 use regex::Regex;
-use rgb::RGB;
 use rgb::Rgb;
+use rgb::RGB;
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -516,10 +516,36 @@ pub async fn gtfs_process_feed(
         }
     }
 
-    let gtfs = gtfs_structures::GtfsReader::default()
+    let gtfs = match gtfs_structures::GtfsReader::default()
         .read_shapes(false)
         .read(path.as_str())
-        .context("Failed to read GTFS via gtfs_structures")?;
+    {
+        Ok(gtfs) => gtfs,
+        Err(dir_error) => {
+            let staged_zip_path =
+                std::env::var("GTFS_ZIP_TEMP").unwrap_or_else(|_| "./temp-zip".into());
+            let staged_zip_path = format!("{}/{}.zip", staged_zip_path, feed_id);
+
+            if std::path::Path::new(&staged_zip_path).exists() {
+                eprintln!(
+                    "Falling back to staged zip for {} after directory read failed: {:#}",
+                    feed_id, dir_error
+                );
+
+                gtfs_structures::GtfsReader::default()
+                    .read_shapes(false)
+                    .read(staged_zip_path.as_str())
+                    .with_context(|| {
+                        format!(
+                            "Failed to read GTFS via gtfs_structures from directory ({:#}) and staged zip ({})",
+                            dir_error, staged_zip_path
+                        )
+                    })?
+            } else {
+                return Err(dir_error).context("Failed to read GTFS via gtfs_structures");
+            }
+        }
+    };
 
     let shapes_txt_path = format!("{}/{}/shapes.txt", gtfs_unzipped_path, feed_id);
 
@@ -2089,20 +2115,14 @@ pub async fn gtfs_process_feed(
 
     let hull_pg: Option<postgis_diesel::types::Polygon<postgis_diesel::types::Point>> =
         hull.map(|polygon_geo| postgis_diesel::types::Polygon {
-            rings: vec![
-                polygon_geo
-                    .into_inner()
-                    .0
-                    .into_iter()
-                    .map(|coord| {
-                        postgis_diesel::types::Point::new(
-                            coord.x,
-                            coord.y,
-                            Some(catenary::WGS_84_SRID),
-                        )
-                    })
-                    .collect(),
-            ],
+            rings: vec![polygon_geo
+                .into_inner()
+                .0
+                .into_iter()
+                .map(|coord| {
+                    postgis_diesel::types::Point::new(coord.x, coord.y, Some(catenary::WGS_84_SRID))
+                })
+                .collect()],
             srid: Some(catenary::WGS_84_SRID),
         });
 

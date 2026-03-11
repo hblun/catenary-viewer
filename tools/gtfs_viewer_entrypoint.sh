@@ -15,5 +15,4 @@ EOF
 EOF
 fi
 
-cd /app/site
-exec python -m http.server 8081
+exec python /app/gtfs_viewer_server.py

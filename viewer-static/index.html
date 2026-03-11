@@ -159,21 +159,29 @@
 
     map.on("load", async () => {
       try {
-        const [metadata, routes, stops] = await Promise.all([
-          loadJson("/data/metadata.json"),
-          loadJson("/data/routes.geojson"),
-          loadJson("/data/stops.geojson")
-        ]);
+        const metadata = await loadJson("/data/metadata.json");
 
         renderMetadata(metadata);
 
-        map.addSource("gtfs-routes", { type: "geojson", data: routes });
-        map.addSource("gtfs-stops", { type: "geojson", data: stops });
+        map.addSource("gtfs-routes", {
+          type: "vector",
+          tiles: ["/tiles/routes/{z}/{x}/{y}.pbf"],
+          minzoom: 0,
+          maxzoom: 16
+        });
+
+        map.addSource("gtfs-stops", {
+          type: "vector",
+          tiles: ["/tiles/stops/{z}/{x}/{y}.pbf"],
+          minzoom: 0,
+          maxzoom: 16
+        });
 
         map.addLayer({
           id: "gtfs-routes-casing",
           type: "line",
           source: "gtfs-routes",
+          "source-layer": "routes",
           paint: {
             "line-color": "#ffffff",
             "line-opacity": 0.92,
@@ -190,6 +198,7 @@
           id: "gtfs-routes",
           type: "line",
           source: "gtfs-routes",
+          "source-layer": "routes",
           paint: {
             "line-color": lineColorExpression(),
             "line-width": ["interpolate", ["linear"], ["zoom"], 5, 1.8, 10, 3.7, 14, 7.5],
@@ -206,6 +215,7 @@
           id: "gtfs-route-labels",
           type: "symbol",
           source: "gtfs-routes",
+          "source-layer": "routes",
           minzoom: 12,
           layout: {
             "symbol-placement": "line-center",
@@ -228,6 +238,7 @@
           id: "gtfs-stops-outline",
           type: "circle",
           source: "gtfs-stops",
+          "source-layer": "stops",
           minzoom: 13,
           paint: {
             "circle-radius": ["interpolate", ["linear"], ["zoom"], 13, 2, 16, 4],
@@ -241,6 +252,7 @@
           id: "gtfs-stops",
           type: "circle",
           source: "gtfs-stops",
+          "source-layer": "stops",
           minzoom: 13,
           paint: {
             "circle-radius": ["interpolate", ["linear"], ["zoom"], 13, 1.2, 16, 2.4],
@@ -254,6 +266,7 @@
           id: "gtfs-routes-hitbox",
           type: "line",
           source: "gtfs-routes",
+          "source-layer": "routes",
           paint: {
             "line-color": "#000000",
             "line-opacity": 0,

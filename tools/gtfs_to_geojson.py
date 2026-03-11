@@ -2,6 +2,7 @@
 import csv
 import io
 import json
+import math
 import os
 import sys
 import time
@@ -13,6 +14,8 @@ from contextlib import contextmanager
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/output")
 GTFS_DIR = os.environ.get("GTFS_DIR", "/gtfs")
 GTFS_FILE = os.environ.get("GTFS_FILE", "")
+GENERATOR_VERSION = "harebell-lite-v3"
+EARTH_METERS_PER_DEG_LAT = 111320.0
 
 
 def fail(message: str) -> None:
@@ -160,6 +163,115 @@ def route_sort_key(route_type: str | None, trip_count: int) -> int:
     return type_rank.get(route_type or "", 100) + min(trip_count, 80)
 
 
+def route_order_tuple(route: dict[str, object]) -> tuple[object, ...]:
+    return (
+        -int(route.get("sort_key", 0)),
+        str(route.get("mode", "")),
+        str(route.get("color", "")),
+        str(route.get("route_short_name", "")),
+        str(route.get("route_id", "")),
+    )
+
+
+def meters_per_degree_lon(lat: float) -> float:
+    return max(EARTH_METERS_PER_DEG_LAT * math.cos(math.radians(lat)), 1.0)
+
+
+def snapped_coord(point: tuple[float, float], precision: int = 5) -> tuple[float, float]:
+    return (round(point[0], precision), round(point[1], precision))
+
+
+def canonical_segment(
+    start: tuple[float, float], end: tuple[float, float]
+) -> tuple[tuple[tuple[float, float], tuple[float, float]], tuple[float, float], tuple[float, float]]:
+    start_key = snapped_coord(start)
+    end_key = snapped_coord(end)
+    if start_key <= end_key:
+        return (start_key, end_key), start, end
+    return (end_key, start_key), end, start
+
+
+def segment_normal(
+    start: tuple[float, float], end: tuple[float, float]
+) -> tuple[float, float] | None:
+    lat = (start[1] + end[1]) / 2.0
+    dx_m = (end[0] - start[0]) * meters_per_degree_lon(lat)
+    dy_m = (end[1] - start[1]) * EARTH_METERS_PER_DEG_LAT
+    length = math.hypot(dx_m, dy_m)
+    if length < 0.01:
+        return None
+    return (-dy_m / length, dx_m / length)
+
+
+def apply_meter_offset(
+    point: tuple[float, float], offset_x_m: float, offset_y_m: float
+) -> tuple[float, float]:
+    lon, lat = point
+    return (
+        lon + offset_x_m / meters_per_degree_lon(lat),
+        lat + offset_y_m / EARTH_METERS_PER_DEG_LAT,
+    )
+
+
+def segment_spacing(route_items: list[dict[str, object]]) -> float:
+    highest_rank = max(int(item.get("sort_key", 0)) for item in route_items)
+    if highest_rank >= 320:
+        return 9.0
+    if highest_rank >= 200:
+        return 7.0
+    return 6.0
+
+
+def offset_linestring(
+    coords: list[tuple[float, float]],
+    route_id: str,
+    segment_offsets: dict[tuple[tuple[tuple[float, float], tuple[float, float]], str], float],
+) -> list[tuple[float, float]]:
+    if len(coords) < 2:
+        return coords
+
+    segment_vectors: list[tuple[float, float] | None] = []
+    segment_shifts: list[float] = []
+
+    for start, end in zip(coords, coords[1:]):
+        segment_key, canonical_start, canonical_end = canonical_segment(start, end)
+        shift = segment_offsets.get((segment_key, route_id), 0.0)
+        normal = segment_normal(canonical_start, canonical_end)
+        segment_vectors.append(normal)
+        segment_shifts.append(shift)
+
+    offset_coords: list[tuple[float, float]] = []
+    for index, point in enumerate(coords):
+        offset_x = 0.0
+        offset_y = 0.0
+        contributors = 0
+
+        if index > 0:
+            shift = segment_shifts[index - 1]
+            normal = segment_vectors[index - 1]
+            if normal and abs(shift) > 0.001:
+                offset_x += normal[0] * shift
+                offset_y += normal[1] * shift
+                contributors += 1
+
+        if index < len(coords) - 1:
+            shift = segment_shifts[index]
+            normal = segment_vectors[index]
+            if normal and abs(shift) > 0.001:
+                offset_x += normal[0] * shift
+                offset_y += normal[1] * shift
+                contributors += 1
+
+        if contributors == 0:
+            offset_coords.append(point)
+        else:
+            offset_coords.append(
+                apply_meter_offset(point, offset_x / contributors, offset_y / contributors)
+            )
+
+    return offset_coords
+
+
 def main() -> None:
     ensure_output_dir()
     archive_path = pick_archive()
@@ -175,6 +287,7 @@ def main() -> None:
                 existing_source.get("archive") == os.path.basename(archive_path)
                 and existing_source.get("size") == archive_stat.st_size
                 and int(existing_source.get("mtime", 0)) == int(archive_stat.st_mtime)
+                and existing_source.get("generator_version") == GENERATOR_VERSION
             ):
                 print(
                     f"GTFS source unchanged for {os.path.basename(archive_path)}; reusing generated data"
@@ -184,6 +297,18 @@ def main() -> None:
             pass
 
     with zipfile.ZipFile(archive_path) as zf:
+        with iter_csv_from_zip(zf, "agency.txt") as agencies_reader:
+            agencies_by_id: dict[str, str] = {}
+            fallback_agency_name = ""
+            if agencies_reader is not None:
+                for row in agencies_reader:
+                    agency_id = row.get("agency_id") or ""
+                    agency_name = row.get("agency_name") or ""
+                    if agency_name and not fallback_agency_name:
+                        fallback_agency_name = agency_name
+                    if agency_id and agency_name:
+                        agencies_by_id[agency_id] = agency_name
+
         with iter_csv_from_zip(zf, "routes.txt") as routes_reader:
             if routes_reader is None:
                 fail("routes.txt is missing")
@@ -252,6 +377,11 @@ def main() -> None:
 
     route_features = []
     route_bboxes: list[list[float] | None] = []
+    route_geometry_by_id: dict[str, list[list[tuple[float, float]]]] = {}
+    route_props_by_id: dict[str, dict[str, object]] = {}
+    segment_route_memberships: dict[
+        tuple[tuple[float, float], tuple[float, float]], dict[str, dict[str, object]]
+    ] = defaultdict(dict)
 
     for route_id, route in routes_by_id.items():
         shape_ids = sorted(trip_shape_by_route.get(route_id, set()))
@@ -260,47 +390,105 @@ def main() -> None:
         color = clean_color(route.get("route_color"), "")
         text_color = clean_color(route.get("route_text_color"), "#ffffff")
         mode = route_mode(route.get("route_type"))
+        agency_id = route.get("agency_id") or ""
+        operator_name = agencies_by_id.get(agency_id, fallback_agency_name if not agency_id else "")
         if not color:
             color = mode_fallback_color(mode, route_id)
 
         linestrings = []
-        line_points_for_bbox: list[tuple[float, float]] = []
         for shape_id in shape_ids:
             ordered = sorted(shape_stop_order.get(shape_id, []), key=lambda item: item[0])
             coords = [(lon, lat) for _, lon, lat in ordered]
             if len(coords) >= 2:
                 linestrings.append(coords)
-                line_points_for_bbox.extend(coords)
+        if not linestrings:
+            continue
+
+        sort_key = route_sort_key(route.get("route_type"), trip_count_by_route.get(route_id, 0))
+        route_geometry_by_id[route_id] = linestrings
+        route_props_by_id[route_id] = {
+            "route_id": route_id,
+            "route_short_name": short_name,
+            "route_long_name": long_name,
+            "operator_name": operator_name,
+            "operator_id": agency_id,
+            "mode": mode,
+            "route_type": route.get("route_type") or "",
+            "color": color,
+            "text_color": text_color,
+            "trip_count": trip_count_by_route.get(route_id, 0),
+            "stop_count": 0,
+            "sort_key": sort_key,
+        }
+
+        for coords in linestrings:
+            for start, end in zip(coords, coords[1:]):
+                segment_key, _, _ = canonical_segment(start, end)
+                segment_route_memberships[segment_key][route_id] = route_props_by_id[route_id]
+
+    segment_offsets: dict[
+        tuple[tuple[tuple[float, float], tuple[float, float]], str], float
+    ] = {}
+    for segment_key, route_map in segment_route_memberships.items():
+        route_items = sorted(route_map.values(), key=route_order_tuple)
+        if len(route_items) < 2:
+            continue
+
+        groups: list[dict[str, object]] = []
+        for item in route_items:
+            if groups and groups[-1]["color"] == item["color"]:
+                groups[-1]["route_ids"].append(item["route_id"])
+            else:
+                groups.append(
+                    {"color": item["color"], "route_ids": [item["route_id"]]}
+                )
+
+        if len(groups) < 2:
+            continue
+
+        spacing = segment_spacing(route_items)
+        for group_index, group in enumerate(groups):
+            shift = (group_index - (len(groups) - 1) / 2.0) * spacing
+            for route_id in group["route_ids"]:
+                segment_offsets[(segment_key, route_id)] = shift
+
+    for route_id, route_props in route_props_by_id.items():
+        original_linestrings = route_geometry_by_id[route_id]
+        offset_linestrings = [
+            offset_linestring(linestring, route_id, segment_offsets)
+            for linestring in original_linestrings
+        ]
 
         geometry = None
-        if len(linestrings) == 1:
-            geometry = {"type": "LineString", "coordinates": linestrings[0]}
-        elif len(linestrings) > 1:
-            geometry = {"type": "MultiLineString", "coordinates": linestrings}
+        if len(offset_linestrings) == 1:
+            geometry = {"type": "LineString", "coordinates": offset_linestrings[0]}
+        elif len(offset_linestrings) > 1:
+            geometry = {"type": "MultiLineString", "coordinates": offset_linestrings}
 
         if geometry is None:
             continue
 
+        line_points_for_bbox = [
+            point for linestring in offset_linestrings for point in linestring
+        ]
         route_bbox = bbox_from_points(line_points_for_bbox)
         route_bboxes.append(route_bbox)
+
+        shared_segment_count = 0
+        for linestring in original_linestrings:
+            for start, end in zip(linestring, linestring[1:]):
+                segment_key, _, _ = canonical_segment(start, end)
+                if (segment_key, route_id) in segment_offsets:
+                    shared_segment_count += 1
+
+        route_properties = dict(route_props)
+        route_properties["shared_segment_count"] = shared_segment_count
+        route_properties["renderer"] = "harebell-lite"
 
         route_features.append(
             {
                 "type": "Feature",
-                "properties": {
-                    "route_id": route_id,
-                    "route_short_name": short_name,
-                    "route_long_name": long_name,
-                    "operator_name": route.get("agency_id") or "",
-                    "operator_id": route.get("agency_id") or "",
-                    "mode": mode,
-                    "route_type": route.get("route_type") or "",
-                    "color": color,
-                    "text_color": text_color,
-                    "trip_count": trip_count_by_route.get(route_id, 0),
-                    "stop_count": 0,
-                    "sort_key": route_sort_key(route.get("route_type"), trip_count_by_route.get(route_id, 0)),
-                },
+                "properties": route_properties,
                 "geometry": geometry,
             }
         )
@@ -319,7 +507,9 @@ def main() -> None:
             "archive": os.path.basename(archive_path),
             "size": archive_stat.st_size,
             "mtime": int(archive_stat.st_mtime),
+            "generator_version": GENERATOR_VERSION,
         },
+        "renderer": GENERATOR_VERSION,
     }
 
     write_json(os.path.join(OUTPUT_DIR, "routes.geojson"), routes_geojson)

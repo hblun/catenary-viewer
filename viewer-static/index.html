@@ -133,7 +133,13 @@
         summary.textContent = `${metadata.archive} · ${metadata.route_count} routes · ${metadata.stop_count} stops`;
       }
       badges.innerHTML = "";
-      ["Basemap styling from Catenary", "Your GTFS routes", "Your GTFS stops"].forEach((label) => {
+      const labels = [
+        "Basemap styling from Catenary",
+        `Renderer: ${metadata.renderer || "vector-tiles"}`,
+        "Your GTFS routes",
+        "Your GTFS stops"
+      ];
+      labels.forEach((label) => {
         const badge = document.createElement("span");
         badge.className = "badge";
         badge.textContent = label;
@@ -147,13 +153,14 @@
       const longName = properties.route_long_name || "";
       const mode = properties.mode || "other";
       const stops = properties.stop_count || 0;
+      const shared = properties.shared_segment_count || 0;
       routeInfo.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
           <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${properties.color || "#0f766e"};"></span>
           <strong>${shortName}</strong>
         </div>
         <div>${longName}</div>
-        <div style="margin-top:6px;color:#4b5563;">Mode: ${mode} · Stops referenced: ${stops}</div>
+        <div style="margin-top:6px;color:#4b5563;">Mode: ${mode} · Shared corridor segments: ${shared} · Stops referenced: ${stops}</div>
       `;
     }
 

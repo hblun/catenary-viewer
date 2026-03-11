@@ -29,8 +29,11 @@ pub struct Edge {
 pub struct LineOnEdge {
     pub line_id: String,
     pub color: String,
+    pub text_color: String,
     pub chateau_id: String,
     pub route_id: String,
+    pub route_label: String,
+    pub route_type: i16,
     pub group_id: Option<String>,
     pub weight: u32,
 }

@@ -31,25 +31,40 @@ impl Loader {
         let mut conn = self.pg_pool.get()?;
 
         // RouteInfo: (color, short_name)
-        let routes_data = tokio::task::block_in_place(
-            || -> Result<HashMap<(String, String), (String, Option<String>)>> {
+        let routes_data = tokio::task::block_in_place(|| -> Result<
+            HashMap<(String, String), (String, String, i16, Option<String>)>,
+        > {
                 let results = routes_dsl::routes
                     .select((
                         routes_dsl::chateau,
                         routes_dsl::route_id,
                         routes_dsl::color,
+                        routes_dsl::text_color,
+                        routes_dsl::route_type,
                         routes_dsl::short_name,
+                        routes_dsl::long_name,
                     ))
-                    .load::<(String, String, Option<String>, Option<String>)>(&mut conn)?;
+                    .load::<(
+                        String,
+                        String,
+                        Option<String>,
+                        Option<String>,
+                        i16,
+                        Option<String>,
+                        Option<String>,
+                    )>(&mut conn)?;
 
                 let mut map = HashMap::new();
-                for (chateau, route_id, color, short_name) in results {
+                for (chateau, route_id, color, text_color, route_type, short_name, long_name) in
+                    results
+                {
                     let c = color.unwrap_or_else(|| "000000".to_string());
-                    map.insert((chateau, route_id), (c, short_name));
+                    let text = text_color.unwrap_or_else(|| "ffffff".to_string());
+                    let label = short_name.or(long_name).unwrap_or_else(|| route_id.clone());
+                    map.insert((chateau, route_id), (c, text, route_type, Some(label)));
                 }
                 Ok(map)
-            },
-        )?;
+            })?;
 
         // Print some sample keys from DB
         println!(
@@ -157,7 +172,7 @@ impl Loader {
 
             let mut lines_on_edge = Vec::new();
             for (chateau_id, route_id) in &edge.route_ids {
-                let (color, short_name) = routes_data
+                let (color, text_color, route_type, route_label) = routes_data
                     .get(&(chateau_id.clone(), route_id.clone()))
                     .cloned()
                     .unwrap_or_else(|| {
@@ -166,7 +181,12 @@ impl Loader {
                             // Only log for first few edges
                             debug!("Missing route info for ({}, {})", chateau_id, route_id);
                         }
-                        ("000000".to_string(), None)
+                        (
+                            "000000".to_string(),
+                            "ffffff".to_string(),
+                            2,
+                            Some(route_id.clone()),
+                        )
                     });
 
                 // Bundle strictly by COLOR to ensure lines of same color are merged (e.g. NYC Subway N/Q/R)
@@ -185,8 +205,11 @@ impl Loader {
                 lines_on_edge.push(LineOnEdge {
                     line_id,
                     color,
+                    text_color,
                     chateau_id: chateau_id.clone(),
                     route_id: route_id.clone(),
+                    route_label: route_label.unwrap_or_else(|| route_id.clone()),
+                    route_type,
                     group_id: Some(group_key),
                     weight: 1,
                 });

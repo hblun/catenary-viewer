@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Harebell Viewer</title>
+    <title>Catenary Scotland</title>
     <link
       href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
       rel="stylesheet"
@@ -18,62 +18,41 @@
       }
 
       body {
-        font-family: "Inter", system-ui, sans-serif;
-        color: #1f2937;
+        font-family: Inter, system-ui, sans-serif;
       }
 
-      .panel {
+      .status {
         position: absolute;
-        top: 16px;
-        left: 16px;
+        top: 14px;
+        left: 14px;
         z-index: 2;
-        width: min(420px, calc(100vw - 32px));
-        padding: 18px 20px;
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.92);
-        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.14);
-        backdrop-filter: blur(18px);
+        max-width: min(460px, calc(100vw - 28px));
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(16px);
+        box-shadow: 0 14px 44px rgba(15, 23, 42, 0.12);
       }
 
-      .panel h1 {
-        margin: 0 0 8px;
-        font-size: 28px;
+      .status h1 {
+        margin: 0 0 6px;
+        font-size: 24px;
         line-height: 1.1;
       }
 
-      .panel p {
+      .status p {
         margin: 0;
-        font-size: 15px;
-        line-height: 1.5;
-      }
-
-      .chip-row {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-top: 12px;
-      }
-
-      .chip {
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: #eef2f7;
-        font-size: 13px;
+        color: #475569;
+        font-size: 14px;
+        line-height: 1.45;
       }
     </style>
   </head>
   <body>
     <div id="map"></div>
-    <div class="panel">
-      <h1>Harebell Pipeline</h1>
-      <p>
-        Basemap styling from Catenary, route geometry from the Maple ->
-        Globeflower -> Harebell pipeline.
-      </p>
-      <div class="chip-row">
-        <span class="chip">Vector tiles: Harebell</span>
-        <span class="chip">Region: Scotland</span>
-      </div>
+    <div class="status">
+      <h1>Scotland Transit</h1>
+      <p>Rendered through the Maple, Globeflower, and Harebell pipeline.</p>
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -89,71 +68,334 @@
         map.addSource("harebell", {
           type: "vector",
           tiles: [`${window.location.origin}/tiles/{z}/{x}/{y}.pbf`],
-          minzoom: 5,
+          minzoom: 3,
           maxzoom: 16,
         });
 
-        map.addLayer({
-          id: "harebell-routes-casing",
-          type: "line",
-          source: "harebell",
-          "source-layer": "transit",
-          paint: {
-            "line-color": "#ffffff",
-            "line-width": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              5,
-              2.2,
-              9,
-              4.5,
-              13,
-              7.5,
-            ],
-            "line-opacity": 0.95,
-          },
-        });
+        const lineColor = ["concat", "#", ["get", "color"]];
+        const textColor = [
+          "case",
+          ["==", ["get", "color"], "000000"],
+          "#ffffff",
+          ["concat", "#", ["coalesce", ["get", "text_color"], "ffffff"]],
+        ];
+        const routeLabel = ["coalesce", ["get", "route_label"], ["get", "route_id"]];
 
         map.addLayer({
-          id: "harebell-routes",
+          id: "busshapes",
           type: "line",
           source: "harebell",
           "source-layer": "transit",
+          filter: ["all", ["==", 3, ["get", "route_type"]]],
           paint: {
-            "line-color": ["coalesce", ["get", "color"], "#0f766e"],
+            "line-color": lineColor,
             "line-width": [
               "interpolate",
               ["linear"],
               ["zoom"],
-              5,
+              7,
+              0.4,
+              10,
+              0.7,
+              12,
+              1,
+              14,
               1.2,
-              9,
-              2.8,
-              13,
-              5,
+              15,
+              1.5,
             ],
-            "line-opacity": 0.98,
+            "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.05, 11, 0.3, 14, 0.5],
           },
+          minzoom: 8,
         });
 
         map.addLayer({
-          id: "harebell-route-labels",
+          id: "bus-labels",
           type: "symbol",
           source: "harebell",
           "source-layer": "transit",
-          minzoom: 11,
+          filter: ["all", ["==", 3, ["get", "route_type"]]],
           layout: {
             "symbol-placement": "line",
-            "text-field": ["coalesce", ["get", "route_id"], ["get", "line_id"]],
-            "text-size": 13,
-            "text-font": ["Noto Sans Regular"],
+            "text-field": routeLabel,
+            "text-font": ["NotoSans-Regular"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 5, 11, 7, 13, 10],
+            "text-ignore-placement": false,
+            "symbol-spacing": ["step", ["zoom"], 200, 12, 100, 13, 100, 15, 120, 20, 150],
+            "text-allow-overlap": false,
+            "text-pitch-alignment": "viewport",
           },
           paint: {
-            "text-color": "#111827",
-            "text-halo-color": "rgba(255,255,255,0.95)",
-            "text-halo-width": 1.2,
+            "text-color": ["concat", "#", ["coalesce", ["get", "text_color"], "ffffff"]],
+            "text-halo-color": lineColor,
+            "text-halo-width": 2,
+            "text-halo-blur": 0,
           },
+          minzoom: 11,
+        });
+
+        map.addLayer({
+          id: "othershapes",
+          type: "line",
+          source: "harebell",
+          "source-layer": "transit",
+          filter: [
+            "all",
+            [
+              "any",
+              ["==", 6, ["get", "route_type"]],
+              ["==", 7, ["get", "route_type"]],
+            ],
+          ],
+          paint: {
+            "line-color": lineColor,
+            "line-width": ["interpolate", ["linear"], ["zoom"], 7, 2, 9, 3],
+            "line-opacity": 1,
+          },
+          minzoom: 3,
+        });
+
+        map.addLayer({
+          id: "other-labels",
+          type: "symbol",
+          source: "harebell",
+          "source-layer": "transit",
+          filter: [
+            "all",
+            [
+              "any",
+              ["==", 4, ["get", "route_type"]],
+              ["==", 6, ["get", "route_type"]],
+              ["==", 7, ["get", "route_type"]],
+            ],
+          ],
+          layout: {
+            "symbol-placement": "line",
+            "text-field": routeLabel,
+            "text-font": ["NotoSans-Medium"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 3, 7, 9, 9, 13, 11],
+            "text-ignore-placement": false,
+            "symbol-spacing": ["step", ["zoom"], 20, 6, 40, 9, 70, 13, 80, 15, 100],
+            "text-allow-overlap": false,
+            "text-pitch-alignment": "viewport",
+          },
+          paint: {
+            "text-color": ["concat", "#", ["coalesce", ["get", "text_color"], "ffffff"]],
+            "text-halo-color": lineColor,
+            "text-halo-width": 2,
+            "text-halo-blur": 1,
+          },
+          minzoom: 3,
+        });
+
+        map.addLayer({
+          id: "ferryshapes",
+          type: "line",
+          source: "harebell",
+          "source-layer": "transit",
+          filter: ["all", ["==", 4, ["get", "route_type"]]],
+          paint: {
+            "line-dasharray": [1, 2],
+            "line-color": lineColor,
+            "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.5, 7, 1, 10, 1.5, 14, 3],
+            "line-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0.8, 7, 0.9],
+          },
+          minzoom: 3,
+        });
+
+        map.addLayer({
+          id: "intercityrailshapes",
+          type: "line",
+          source: "harebell",
+          "source-layer": "transit",
+          filter: ["all", ["==", 2, ["get", "route_type"]]],
+          paint: {
+            "line-color": lineColor,
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              3,
+              0.4,
+              5,
+              0.7,
+              7,
+              1,
+              9,
+              2,
+              11,
+              2.5,
+              15,
+              3,
+              18,
+              4,
+            ],
+            "line-opacity": 0.9,
+          },
+          minzoom: 3,
+        });
+
+        map.addLayer({
+          id: "intercityrail-labels",
+          type: "symbol",
+          source: "harebell",
+          "source-layer": "transit",
+          filter: ["all", ["==", 2, ["get", "route_type"]]],
+          layout: {
+            "symbol-placement": "line",
+            "text-field": routeLabel,
+            "text-font": ["NotoSans-Bold"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 3, 6, 6, 7, 9, 9, 13, 11],
+            "text-ignore-placement": false,
+            "symbol-spacing": ["step", ["zoom"], 30, 6, 40, 9, 70, 13, 80, 15, 100],
+            "text-allow-overlap": false,
+            "text-pitch-alignment": "viewport",
+          },
+          paint: {
+            "text-color": textColor,
+            "text-halo-color": lineColor,
+            "text-halo-width": 1,
+            "text-halo-blur": 1,
+          },
+          minzoom: 5.5,
+        });
+
+        map.addLayer({
+          id: "metroshapes",
+          type: "line",
+          source: "harebell",
+          "source-layer": "transit",
+          filter: [
+            "all",
+            [
+              "any",
+              ["==", 1, ["get", "route_type"]],
+              ["==", 12, ["get", "route_type"]],
+            ],
+          ],
+          paint: {
+            "line-color": lineColor,
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              6,
+              0.5,
+              7,
+              1,
+              9,
+              2,
+              11,
+              2,
+              15,
+              2.5,
+              18,
+              3.5,
+            ],
+            "line-opacity": 1,
+          },
+          minzoom: 5,
+        });
+
+        map.addLayer({
+          id: "metro-labels",
+          type: "symbol",
+          source: "harebell",
+          "source-layer": "transit",
+          filter: [
+            "all",
+            [
+              "any",
+              ["==", 1, ["get", "route_type"]],
+              ["==", 12, ["get", "route_type"]],
+            ],
+          ],
+          layout: {
+            "symbol-placement": "line",
+            "text-field": routeLabel,
+            "text-font": ["NotoSans-Bold"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 3, 7, 9, 9, 13, 11],
+            "text-ignore-placement": false,
+            "symbol-spacing": ["step", ["zoom"], 20, 6, 40, 9, 70, 13, 80, 15, 100],
+            "text-allow-overlap": false,
+            "text-pitch-alignment": "viewport",
+          },
+          paint: {
+            "text-color": textColor,
+            "text-halo-color": lineColor,
+            "text-halo-width": 1,
+            "text-halo-blur": 1,
+          },
+          minzoom: 6,
+        });
+
+        map.addLayer({
+          id: "tramshapes",
+          type: "line",
+          source: "harebell",
+          "source-layer": "transit",
+          filter: [
+            "all",
+            [
+              "any",
+              ["==", 0, ["get", "route_type"]],
+              ["==", 5, ["get", "route_type"]],
+            ],
+          ],
+          paint: {
+            "line-color": lineColor,
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              6,
+              0.5,
+              7,
+              1,
+              9,
+              2,
+              11,
+              2,
+              15,
+              2.2,
+              18,
+              3.3,
+            ],
+            "line-opacity": 1,
+          },
+          minzoom: 5,
+        });
+
+        map.addLayer({
+          id: "tram-labels",
+          type: "symbol",
+          source: "harebell",
+          "source-layer": "transit",
+          filter: [
+            "all",
+            [
+              "any",
+              ["==", 0, ["get", "route_type"]],
+              ["==", 5, ["get", "route_type"]],
+            ],
+          ],
+          layout: {
+            "symbol-placement": "line",
+            "text-field": routeLabel,
+            "text-font": ["NotoSans-Bold"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 3, 7, 9, 9, 13, 11],
+            "text-ignore-placement": false,
+            "symbol-spacing": ["step", ["zoom"], 20, 6, 40, 9, 70, 13, 80, 15, 100],
+            "text-allow-overlap": false,
+            "text-pitch-alignment": "viewport",
+          },
+          paint: {
+            "text-color": ["concat", "#", ["coalesce", ["get", "text_color"], "ffffff"]],
+            "text-halo-color": lineColor,
+            "text-halo-width": 1,
+            "text-halo-blur": 1,
+          },
+          minzoom: 6,
         });
       }
 
@@ -167,10 +409,7 @@
         });
 
         map.addControl(new maplibregl.NavigationControl(), "top-right");
-
-        map.on("load", () => {
-          addTransitLayers(map);
-        });
+        map.on("load", () => addTransitLayers(map));
       })().catch((error) => {
         document.body.innerHTML =
           `<pre style="padding:24px;font:14px/1.5 monospace">` +

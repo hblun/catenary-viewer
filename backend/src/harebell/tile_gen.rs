@@ -304,13 +304,15 @@ impl TileGenerator {
                         let unique_id = (edge.id as u64) << 16 | (original_idx as u64);
                         feature.set_id(unique_id);
                         feature.add_tag_string("line_id", &line.line_id);
-                        // Ensure single # char
+                        feature.add_tag_string("color", line.color.trim_start_matches('#'));
                         feature.add_tag_string(
-                            "color",
-                            &format!("#{}", line.color.trim_start_matches('#')),
+                            "text_color",
+                            line.text_color.trim_start_matches('#'),
                         );
                         feature.add_tag_string("chateau_id", &line.chateau_id);
                         feature.add_tag_string("route_id", &line.route_id);
+                        feature.add_tag_string("route_label", &line.route_label);
+                        feature.add_tag_double("route_type", line.route_type as f64);
                         // Expose offset for client-side rendering if needed
                         feature.add_tag_double("offset", shift);
                         layer = feature.into_layer();
@@ -887,10 +889,15 @@ impl TileGenerator {
                                     + group1_idx as u64,
                             ));
                             feature.add_tag_string("line_id", &line1.line_id);
+                            feature.add_tag_string("color", line1.color.trim_start_matches('#'));
                             feature.add_tag_string(
-                                "color",
-                                &format!("#{}", line1.color.trim_start_matches('#')),
+                                "text_color",
+                                line1.text_color.trim_start_matches('#'),
                             );
+                            feature.add_tag_string("chateau_id", &line1.chateau_id);
+                            feature.add_tag_string("route_id", &line1.route_id);
+                            feature.add_tag_string("route_label", &line1.route_label);
+                            feature.add_tag_double("route_type", line1.route_type as f64);
                             feature.add_tag_string("type", "connection");
                             layer = feature.into_layer();
                         }

@@ -6,6 +6,7 @@
 !*.html
 !*.md
 !*.toml
+!*.lock
 !*.yml
 !Dockerfile*
 !Makefile

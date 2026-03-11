@@ -1,0 +1,10 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY tools/gtfs_to_geojson.py /app/gtfs_to_geojson.py
+
+ENV GTFS_DIR=/gtfs
+ENV OUTPUT_DIR=/output
+
+CMD ["python", "/app/gtfs_to_geojson.py"]

@@ -1,4 +1,4 @@
-.PHONY: help build run-db run-maple run-harebell run-birch run-viewer stop clean
+.PHONY: help build run-db run-maple run-harebell run-birch run-viewer run-gtfs-viewer stop clean
 
 help:
 	@echo "Catenary Viewer Stack - Make Commands"
@@ -9,6 +9,7 @@ help:
 	@echo "  make run-harebell  - Run harebell (tile server)"
 	@echo "  make run-birch     - Run birch (API server)"
 	@echo "  make run-viewer    - Run viewer HTTP server"
+	@echo "  make run-gtfs-viewer - Build and run the minimal GTFS docker viewer on :8081"
 	@echo "  make stop          - Stop all containers"
 	@echo "  make clean         - Clean build artifacts"
 
@@ -37,6 +38,9 @@ run-birch:
 
 run-viewer:
 	cd .. && python3 -m http.server 8081
+
+run-gtfs-viewer:
+	docker compose -f docker-compose.gtfs-viewer.yml up --build
 
 stop:
 	docker stop $$(docker ps -q --filter "name=catenary") 2>/dev/null || true

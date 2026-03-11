@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GTFS Viewer</title>
+  <script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: Helvetica, Arial, sans-serif;
+    }
+
+    #panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      width: min(360px, calc(100vw - 32px));
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.18);
+      backdrop-filter: blur(10px);
+    }
+
+    #title {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0 0 6px;
+    }
+
+    #summary {
+      font-size: 13px;
+      color: #374151;
+      margin: 0 0 10px;
+    }
+
+    #route-info {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #d1d5db;
+      font-size: 13px;
+      color: #111827;
+      min-height: 40px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      color: #111827;
+      font-size: 12px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+
+    #error {
+      color: #991b1b;
+      font-size: 13px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="panel">
+    <p id="title">GTFS Viewer</p>
+    <p id="summary">Loading data...</p>
+    <div id="badges"></div>
+    <div id="route-info">Click a route to inspect it.</div>
+    <div id="error"></div>
+  </div>
+
+  <script>
+    const summary = document.getElementById("summary");
+    const badges = document.getElementById("badges");
+    const routeInfo = document.getElementById("route-info");
+    const errorBox = document.getElementById("error");
+
+    const map = new maplibregl.Map({
+      container: "map",
+      style: "/static/light-style.json",
+      center: [-4.25, 56.75],
+      zoom: 6
+    });
+
+    map.addControl(new maplibregl.NavigationControl(), "top-right");
+
+    async function loadJson(path) {
+      const response = await fetch(path, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Failed to load ${path}: ${response.status}`);
+      }
+      return response.json();
+    }
+
+    function fitToBbox(bbox) {
+      if (!bbox || bbox.length !== 4) return;
+      map.fitBounds(
+        [
+          [bbox[0], bbox[1]],
+          [bbox[2], bbox[3]]
+        ],
+        { padding: 64, duration: 0 }
+      );
+    }
+
+    function renderMetadata(metadata) {
+      summary.textContent = `${metadata.archive} · ${metadata.route_count} routes · ${metadata.stop_count} stops`;
+      badges.innerHTML = "";
+      ["Basemap styling from Catenary", "Your GTFS routes", "Your GTFS stops"].forEach((label) => {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = label;
+        badges.appendChild(badge);
+      });
+      fitToBbox(metadata.bbox);
+    }
+
+    function setRouteInfo(properties) {
+      const shortName = properties.route_short_name || properties.route_id || "Unnamed route";
+      const longName = properties.route_long_name || "";
+      const mode = properties.mode || "other";
+      const stops = properties.stop_count || 0;
+      routeInfo.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${properties.color || "#0f766e"};"></span>
+          <strong>${shortName}</strong>
+        </div>
+        <div>${longName}</div>
+        <div style="margin-top:6px;color:#4b5563;">Mode: ${mode} · Stops referenced: ${stops}</div>
+      `;
+    }
+
+    map.on("load", async () => {
+      try {
+        const [metadata, routes, stops] = await Promise.all([
+          loadJson("/data/metadata.json"),
+          loadJson("/data/routes.geojson"),
+          loadJson("/data/stops.geojson")
+        ]);
+
+        renderMetadata(metadata);
+
+        map.addSource("gtfs-routes", { type: "geojson", data: routes });
+        map.addSource("gtfs-stops", { type: "geojson", data: stops });
+
+        map.addLayer({
+          id: "gtfs-routes-hitbox",
+          type: "line",
+          source: "gtfs-routes",
+          paint: {
+            "line-color": "#000000",
+            "line-opacity": 0,
+            "line-width": ["interpolate", ["linear"], ["zoom"], 5, 10, 10, 18, 14, 28]
+          },
+          layout: {
+            "line-cap": "round",
+            "line-join": "round"
+          }
+        });
+
+        map.addLayer({
+          id: "gtfs-routes",
+          type: "line",
+          source: "gtfs-routes",
+          paint: {
+            "line-color": ["coalesce", ["get", "color"], "#0f766e"],
+            "line-width": ["interpolate", ["linear"], ["zoom"], 5, 1.5, 10, 3.5, 14, 7],
+            "line-opacity": 0.96
+          },
+          layout: {
+            "line-cap": "round",
+            "line-join": "round"
+          }
+        });
+
+        map.addLayer({
+          id: "gtfs-stops",
+          type: "circle",
+          source: "gtfs-stops",
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 1.5, 12, 3.5],
+            "circle-color": "#ffffff",
+            "circle-stroke-color": "#0f172a",
+            "circle-stroke-width": 1
+          }
+        });
+
+        map.on("mouseenter", "gtfs-routes-hitbox", () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+
+        map.on("mouseleave", "gtfs-routes-hitbox", () => {
+          map.getCanvas().style.cursor = "";
+        });
+
+        map.on("click", "gtfs-routes-hitbox", (event) => {
+          const feature = event.features && event.features[0];
+          if (!feature) return;
+          setRouteInfo(feature.properties || {});
+        });
+      } catch (error) {
+        console.error(error);
+        summary.textContent = "Failed to load generated GTFS data.";
+        errorBox.style.display = "block";
+        errorBox.textContent = String(error.message || error);
+      }
+    });
+  </script>
+</body>
+</html>

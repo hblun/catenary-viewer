@@ -39,6 +39,37 @@ export DATABASE_URL="postgres://catenary:catenary@localhost:5432/catenary"
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed instructions.
 
+## Fastest Path: View Your Own GTFS In Docker
+
+If your immediate goal is just "drop in a GTFS zip and see it on the map", use the lightweight viewer path instead of the old Maple/Harebell stack.
+
+1. Put a GTFS zip in [`gtfs/`](/Users/home/Devwork/catenary/gtfs)
+2. Run:
+
+```bash
+docker compose -f docker-compose.gtfs-viewer.yml up --build
+```
+
+3. Open [http://localhost:8081](http://localhost:8081)
+
+Notes:
+- If there are multiple zip files in `gtfs/`, set `GTFS_FILE`:
+
+```bash
+GTFS_FILE=my-feed.zip docker compose -f docker-compose.gtfs-viewer.yml up --build
+```
+
+- If the GTFS zip already lives elsewhere on the server, mount that directory directly:
+
+```bash
+GTFS_HOST_DIR=/home/youruser/gtfs \
+GTFS_FILE=filtered_scotland_gtfs.zip \
+docker compose -f docker-compose.gtfs-viewer.yml up --build
+```
+
+- This path uses the existing Catenary basemap styling and overlays routes/stops extracted from your GTFS.
+- It does not depend on the unfinished Maple/Harebell viewer-only refactor.
+
 ## Services
 
 | Service | Purpose | Command |

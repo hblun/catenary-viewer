@@ -25,7 +25,7 @@ run-db:
 build:
 	cd backend && cargo build --release --bin maple
 	cd backend && cargo build --release --bin harebell
-	cd backend && cargo build --release --bin birch
+	cd backend && cargo build --release --features datadog-tracing --bin birch
 
 run-maple:
 	@echo "Usage: DATABASE_URL=postgres://catenary:catenary@localhost:5432/catenary ./backend/target/release/maple --gtfs /path/to/gtfs.zip"

@@ -64,7 +64,6 @@ use tracing_subscriber::util::SubscriberInitExt;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
 use geojson::{Feature, GeoJson, JsonValue};
-use opentelemetry::trace::TracerProvider as _;
 use ordered_float::Pow;
 use serde::Deserialize;
 use serde_derive::Serialize;
@@ -784,24 +783,30 @@ async fn ip_addr_to_geo_api(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // 1. Configure the OTLP Exporter
-    // 1. Configure the OTLP Exporter
-    // 1. Configure the Datadog Tracer
-    let tracer_provider = datadog_opentelemetry::tracing().init();
-
-    let tracer = tracer_provider.tracer("birch");
-
-    let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-
-    // 2. Configure the Format Layer (Logs)
     let fmt_layer = tracing_subscriber::fmt::layer().with_target(false);
 
-    // 3. Register everything
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::from_default_env())
-        .with(fmt_layer)
-        .with(telemetry_layer)
-        .init();
+    #[cfg(feature = "datadog-tracing")]
+    {
+        use opentelemetry::trace::TracerProvider as _;
+
+        let tracer_provider = datadog_opentelemetry::tracing().init();
+        let tracer = tracer_provider.tracer("birch");
+        let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::from_default_env())
+            .with(fmt_layer)
+            .with(telemetry_layer)
+            .init();
+    }
+
+    #[cfg(not(feature = "datadog-tracing"))]
+    {
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::from_default_env())
+            .with(fmt_layer)
+            .init();
+    }
 
     // Connect to the database.
     let pool = Arc::new(make_async_pool().await.unwrap());

@@ -18,7 +18,7 @@ WORKDIR /catenary
 
 COPY ./../.. .
 
-RUN cargo build --release --bin birch
+RUN cargo build --release --features datadog-tracing --bin birch
 
 RUN mkdir output-binaries/
 

@@ -17,7 +17,7 @@ COPY backend/migrations ./migrations
 COPY backend/diesel.toml ./
 COPY backend/rust-toolchain.toml ./
 
-RUN RUST_MIN_STACK=16777216 cargo build --release --bin birch
+RUN RUST_MIN_STACK=16777216 cargo build --release --features datadog-tracing --bin birch
 
 RUN mkdir -p /output && cp ./target/release/birch /output/
 

@@ -10,6 +10,7 @@ import mercantile
 import mapbox_vector_tile
 from flask import Flask, Response, abort, jsonify, send_from_directory
 from shapely.geometry import shape, mapping, box
+from shapely.strtree import STRtree
 
 
 SITE_DIR = Path("/app/site")
@@ -53,8 +54,37 @@ def load_features(name: str):
         geometry = shape(geom)
         if geometry.is_empty:
             continue
-        features.append({"geometry": geometry, "properties": feature.get("properties", {})})
+        features.append(
+            {
+                "geometry": geometry,
+                "properties": feature.get("properties", {}),
+                "id": feature.get("properties", {}).get("route_id")
+                or feature.get("properties", {}).get("stop_id", ""),
+            }
+        )
     return features
+
+
+def build_index(features):
+    geometries = [feature["geometry"] for feature in features]
+    if not geometries:
+        return None
+    return STRtree(geometries)
+
+
+def query_index(index, features, bbox_shape):
+    if index is None:
+        return features
+
+    matches = index.query(bbox_shape)
+    if len(matches) == 0:
+        return []
+
+    if not hasattr(matches[0], "geom_type"):
+        return [features[index] for index in matches]
+
+    geometry_ids = {id(geometry) for geometry in matches}
+    return [feature for feature in features if id(feature["geometry"]) in geometry_ids]
 
 
 def load_state():
@@ -64,6 +94,8 @@ def load_state():
             "metadata": dict(STATE["metadata"]),
             "routes": [],
             "stops": [],
+            "route_index": None,
+            "stop_index": None,
         }
 
     metadata = load_json(metadata_path)
@@ -71,6 +103,8 @@ def load_state():
         "metadata": metadata,
         "routes": [],
         "stops": [],
+        "route_index": None,
+        "stop_index": None,
     }
 
     
@@ -89,6 +123,8 @@ def refresh_state_if_needed():
         if not metadata.get("error"):
             next_state["routes"] = load_features("routes")
             next_state["stops"] = load_features("stops")
+            next_state["route_index"] = build_index(next_state["routes"])
+            next_state["stop_index"] = build_index(next_state["stops"])
 
         next_state["metadata_mtime_ns"] = metadata_mtime_ns
         STATE.update(next_state)
@@ -101,6 +137,8 @@ def current_state():
             "metadata": STATE["metadata"],
             "routes": STATE["routes"],
             "stops": STATE["stops"],
+            "route_index": STATE.get("route_index"),
+            "stop_index": STATE.get("stop_index"),
         }
 
 
@@ -118,7 +156,7 @@ def route_tile_features(z: int, x: int, y: int):
     state = current_state()
     bbox_shape, quantize_bounds = tile_bbox(z, x, y)
     items = []
-    for feature in state["routes"]:
+    for feature in query_index(state["route_index"], state["routes"], bbox_shape):
         if not feature["geometry"].intersects(bbox_shape):
             continue
         clipped = feature["geometry"].intersection(bbox_shape)
@@ -138,7 +176,7 @@ def stop_tile_features(z: int, x: int, y: int):
     state = current_state()
     bbox_shape, quantize_bounds = tile_bbox(z, x, y)
     items = []
-    for feature in state["stops"]:
+    for feature in query_index(state["stop_index"], state["stops"], bbox_shape):
         if not feature["geometry"].intersects(bbox_shape):
             continue
         items.append(

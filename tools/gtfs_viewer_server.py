@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+from threading import Lock
 
 import mercantile
 import mapbox_vector_tile
@@ -14,6 +15,20 @@ DATA_DIR = SITE_DIR / "data"
 STATIC_DIR = SITE_DIR / "static"
 
 app = Flask(__name__, static_folder=None)
+STATE_LOCK = Lock()
+STATE = {
+    "metadata": {
+        "archive": "",
+        "route_count": 0,
+        "stop_count": 0,
+        "bbox": None,
+        "error": "GTFS data is still being prepared.",
+        "renderer": "harebell-lite-v3",
+    },
+    "routes": [],
+    "stops": [],
+    "metadata_mtime_ns": None,
+}
 
 
 def load_json(path: Path):
@@ -36,20 +51,50 @@ def load_features(name: str):
 
 
 def load_state():
-    metadata = load_json(DATA_DIR / "metadata.json")
-    state = {
+    metadata_path = DATA_DIR / "metadata.json"
+    if not metadata_path.exists():
+        return {
+            "metadata": dict(STATE["metadata"]),
+            "routes": [],
+            "stops": [],
+        }
+
+    metadata = load_json(metadata_path)
+    return {
         "metadata": metadata,
         "routes": [],
         "stops": [],
     }
 
-    if not metadata.get("error"):
-        state["routes"] = load_features("routes")
-        state["stops"] = load_features("stops")
-    return state
+    
+def refresh_state_if_needed():
+    metadata_path = DATA_DIR / "metadata.json"
+    if not metadata_path.exists():
+        return
+
+    metadata_mtime_ns = metadata_path.stat().st_mtime_ns
+    with STATE_LOCK:
+        if STATE["metadata_mtime_ns"] == metadata_mtime_ns:
+            return
+
+        next_state = load_state()
+        metadata = next_state["metadata"]
+        if not metadata.get("error"):
+            next_state["routes"] = load_features("routes")
+            next_state["stops"] = load_features("stops")
+
+        next_state["metadata_mtime_ns"] = metadata_mtime_ns
+        STATE.update(next_state)
 
 
-STATE = load_state()
+def current_state():
+    refresh_state_if_needed()
+    with STATE_LOCK:
+        return {
+            "metadata": STATE["metadata"],
+            "routes": STATE["routes"],
+            "stops": STATE["stops"],
+        }
 
 
 def tile_bbox(z: int, x: int, y: int):
@@ -63,9 +108,10 @@ def tile_bbox(z: int, x: int, y: int):
 
 
 def route_tile_features(z: int, x: int, y: int):
+    state = current_state()
     bbox_shape, quantize_bounds = tile_bbox(z, x, y)
     items = []
-    for feature in STATE["routes"]:
+    for feature in state["routes"]:
         if not feature["geometry"].intersects(bbox_shape):
             continue
         clipped = feature["geometry"].intersection(bbox_shape)
@@ -82,9 +128,10 @@ def route_tile_features(z: int, x: int, y: int):
 
 
 def stop_tile_features(z: int, x: int, y: int):
+    state = current_state()
     bbox_shape, quantize_bounds = tile_bbox(z, x, y)
     items = []
-    for feature in STATE["stops"]:
+    for feature in state["stops"]:
         if not feature["geometry"].intersects(bbox_shape):
             continue
         items.append(
@@ -122,7 +169,7 @@ def static_files(subpath: str):
 
 @app.get("/data/metadata.json")
 def metadata():
-    response = jsonify(STATE["metadata"])
+    response = jsonify(current_state()["metadata"])
     response.headers["Cache-Control"] = "public, max-age=60"
     return response
 

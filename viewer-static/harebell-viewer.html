@@ -72,6 +72,11 @@
           maxzoom: 16,
         });
 
+        map.addSource("gtfs-overlay", {
+          type: "geojson",
+          data: `${window.location.origin}/data/routes.geojson`,
+        });
+
         const lineColor = ["concat", "#", ["get", "color"]];
         const textColor = [
           "case",
@@ -80,6 +85,89 @@
           ["concat", "#", ["coalesce", ["get", "text_color"], "ffffff"]],
         ];
         const routeLabel = ["coalesce", ["get", "route_label"], ["get", "route_id"]];
+        const gtfsLineColor = ["coalesce", ["get", "color"], "#5b6472"];
+        const gtfsTextColor = ["coalesce", ["get", "text_color"], "#ffffff"];
+        const gtfsRouteLabel = [
+          "coalesce",
+          ["get", "route_short_name"],
+          ["get", "route_long_name"],
+          ["get", "route_id"],
+        ];
+
+        map.addLayer({
+          id: "gtfs-all-routes-casing",
+          type: "line",
+          source: "gtfs-overlay",
+          paint: {
+            "line-color": "#ffffff",
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              7,
+              1.5,
+              9,
+              2.5,
+              11,
+              4,
+              13,
+              5.5,
+              15,
+              7,
+            ],
+            "line-opacity": 0.9,
+          },
+          minzoom: 7,
+        });
+
+        map.addLayer({
+          id: "gtfs-all-routes",
+          type: "line",
+          source: "gtfs-overlay",
+          paint: {
+            "line-color": gtfsLineColor,
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              7,
+              0.8,
+              9,
+              1.4,
+              11,
+              2.4,
+              13,
+              3.4,
+              15,
+              4.5,
+            ],
+            "line-opacity": 0.92,
+          },
+          minzoom: 7,
+        });
+
+        map.addLayer({
+          id: "gtfs-route-labels",
+          type: "symbol",
+          source: "gtfs-overlay",
+          layout: {
+            "symbol-placement": "line",
+            "text-field": gtfsRouteLabel,
+            "text-font": ["NotoSans-Bold"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 8, 12, 10, 14, 12],
+            "text-ignore-placement": false,
+            "symbol-spacing": ["step", ["zoom"], 140, 12, 110, 14, 90],
+            "text-allow-overlap": false,
+            "text-pitch-alignment": "viewport",
+          },
+          paint: {
+            "text-color": gtfsTextColor,
+            "text-halo-color": gtfsLineColor,
+            "text-halo-width": 2,
+            "text-halo-blur": 0,
+          },
+          minzoom: 10,
+        });
 
         map.addLayer({
           id: "busshapes",

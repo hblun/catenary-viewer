@@ -65,6 +65,7 @@
       }
 
       function addTransitLayers(map) {
+        const urlParams = new URLSearchParams(window.location.search);
         map.addSource("busshapes", {
           type: "vector",
           tiles: [`${window.location.origin}/birch/shapes_bus/{z}/{x}/{y}.pbf`],
@@ -110,16 +111,43 @@
         const routeLabel = ["coalesce", ["get", "route_label"], ["get", "route_id"]];
 
         map.addLayer({
-          id: "busshapes-casing",
+          id: "harebell-rail-aggregate",
           type: "line",
-          source: "busshapes",
-          "source-layer": "data",
+          source: "harebell",
+          "source-layer": "transit",
+          filter: [
+            "all",
+            [
+              "any",
+              ["==", 0, ["get", "route_type"]],
+              ["==", 1, ["get", "route_type"]],
+              ["==", 2, ["get", "route_type"]],
+              ["==", 5, ["get", "route_type"]],
+              ["==", 7, ["get", "route_type"]],
+              ["==", 11, ["get", "route_type"]],
+              ["==", 12, ["get", "route_type"]],
+            ],
+          ],
           paint: {
-            "line-color": "#ffffff",
-            "line-width": ["interpolate", ["linear"], ["zoom"], 7, 1.2, 10, 2.2, 12, 3.2, 14, 4.2, 15, 5],
-            "line-opacity": 0.9,
+            "line-color": lineColor,
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              5,
+              0.8,
+              7,
+              1.4,
+              9,
+              2.2,
+              11,
+              2.8,
+              15,
+              3.6,
+            ],
+            "line-opacity": ["interpolate", ["linear"], ["zoom"], 5, 0.25, 8, 0.38, 12, 0.5],
           },
-          minzoom: 7,
+          minzoom: 5,
         });
 
         map.addLayer({
@@ -127,10 +155,43 @@
           type: "line",
           source: "busshapes",
           "source-layer": "data",
+          filter: [
+            "all",
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-9mu-mts", ["get", "onestop_feed_id"]],
+                ["==", ["coalesce", ["get", "route_label"]], "950"],
+              ],
+            ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-9mu-mts", ["get", "onestop_feed_id"]],
+                ["==", ["coalesce", ["get", "route_label"]], "Old Town to Airport Shuttle"],
+              ],
+            ],
+            [
+              "!",
+              [
+                "all",
+                [
+                  "any",
+                  ["==", "autobús~interurbano~de~cataluña", ["get", "chateau"]],
+                  ["==", "flixbus~europe", ["get", "chateau"]],
+                  ["==", "f-ahverkehrsverbund~schleswig~holstein~nah", ["get", "chateau"]],
+                ],
+                ["==", true, ["get", "stop_to_stop_generated"]],
+              ],
+            ],
+            ["!=", ["get", "onestop_feed_id"], "f-u0-blablacar"],
+          ],
           paint: {
             "line-color": lineColor,
-            "line-width": ["interpolate", ["linear"], ["zoom"], 7, 0.8, 10, 1.4, 12, 2.2, 14, 2.8, 15, 3.4],
-            "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.18, 11, 0.55, 14, 0.78],
+            "line-width": ["interpolate", ["linear"], ["zoom"], 7, 0.4, 10, 0.7, 12, 1, 14, 1.2, 15, 1.5],
+            "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.05, 11, 0.3, 14, 0.5],
           },
           minzoom: 8,
         });
@@ -140,18 +201,64 @@
           type: "symbol",
           source: "busshapes",
           "source-layer": "data",
+          filter: [
+            "all",
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-9mu-mts", ["get", "onestop_feed_id"]],
+                ["==", ["coalesce", ["get", "route_label"]], "950"],
+              ],
+            ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-9mu-mts", ["get", "onestop_feed_id"]],
+                ["==", ["coalesce", ["get", "route_label"]], "Old Town to Airport Shuttle"],
+              ],
+            ],
+            [
+              "!",
+              [
+                "all",
+                [
+                  "any",
+                  ["==", "autobús~interurbano~de~cataluña", ["get", "chateau"]],
+                  ["==", "flixbus~europe", ["get", "chateau"]],
+                  ["==", "f-ahverkehrsverbund~schleswig~holstein~nah", ["get", "chateau"]],
+                ],
+                ["==", true, ["get", "stop_to_stop_generated"]],
+              ],
+            ],
+            ["!=", ["get", "onestop_feed_id"], "f-u0-blablacar"],
+          ],
           layout: {
             "symbol-placement": "line",
-            "text-field": routeLabel,
-            "text-font": ["NotoSans-Regular"],
+            "text-field": urlParams.get("debug")
+              ? [
+                  "concat",
+                  ["get", "onestop_feed_id"],
+                  "|",
+                  ["get", "shape_id"],
+                  "|",
+                  ["coalesce", ["get", "route_label"]],
+                ]
+              : ["coalesce", ["get", "route_label"]],
+            "text-font": ["literal", ["NotoSans-Regular"]],
             "text-size": ["interpolate", ["linear"], ["zoom"], 10, 5, 11, 7, 13, 10],
             "text-ignore-placement": false,
-            "symbol-spacing": ["step", ["zoom"], 200, 12, 100, 13, 100, 15, 120, 20, 150],
+            "symbol-spacing":
+              window.innerWidth > 750
+                ? ["step", ["zoom"], 200, 12, 100, 13, 100, 15, 120, 20, 150]
+                : ["step", ["zoom"], 200, 12, 80, 13, 100, 15, 100, 20, 150],
             "text-allow-overlap": false,
             "text-pitch-alignment": "viewport",
+            "visibility": "none",
           },
           paint: {
-            "text-color": ["concat", "#", ["coalesce", ["get", "text_color"], "ffffff"]],
+            "text-color": ["concat", "#", ["get", "text_color"]],
             "text-halo-color": lineColor,
             "text-halo-width": 2,
             "text-halo-blur": 0,
@@ -166,6 +273,14 @@
           "source-layer": "data",
           filter: [
             "all",
+            [
+              "!",
+              [
+                "all",
+                ["==", "schweiz", ["get", "chateau"]],
+                ["==", true, ["get", "stop_to_stop_generated"]],
+              ],
+            ],
             [
               "any",
               ["==", 6, ["get", "route_type"]],
@@ -193,6 +308,14 @@
               ["==", 6, ["get", "route_type"]],
               ["==", 7, ["get", "route_type"]],
             ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "schweiz", ["get", "chateau"]],
+                ["==", true, ["get", "stop_to_stop_generated"]],
+              ],
+            ],
           ],
           layout: {
             "symbol-placement": "line",
@@ -203,9 +326,10 @@
             "symbol-spacing": ["step", ["zoom"], 20, 6, 40, 9, 70, 13, 80, 15, 100],
             "text-allow-overlap": false,
             "text-pitch-alignment": "viewport",
+            "visibility": "none",
           },
           paint: {
-            "text-color": ["concat", "#", ["coalesce", ["get", "text_color"], "ffffff"]],
+            "text-color": ["concat", "#", ["get", "text_color"]],
             "text-halo-color": lineColor,
             "text-halo-width": 2,
             "text-halo-blur": 1,
@@ -233,7 +357,28 @@
           type: "line",
           source: "intercityrailshapes",
           "source-layer": "data",
-          filter: ["all", ["==", 2, ["get", "route_type"]]],
+          filter: [
+            "all",
+            ["any", ["==", 2, ["get", "route_type"]]],
+            ["!", ["all", ["==", ["get", "chateau"], "gotransit"], ["==", ["get", "shape_id"], "UNGL"]]],
+            [
+              "!",
+              [
+                "all",
+                ["==", "amtrak", ["get", "chateau"]],
+                ["==", true, ["get", "stop_to_stop_generated"]],
+              ],
+            ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-renfe~media~larga~distancia~y~ave", ["get", "chateau"]],
+                ["==", "f-ahverkehrsverbund~schleswig~holstein~nah", ["get", "chateau"]],
+                ["==", true, ["get", "stop_to_stop_generated"]],
+              ],
+            ],
+          ],
           paint: {
             "line-color": lineColor,
             "line-width": [
@@ -255,7 +400,7 @@
               18,
               4,
             ],
-            "line-opacity": 0.9,
+            "line-opacity": ["case", ["==", true, ["get", "stop_to_stop_generated"]], 0.2, 0.9],
           },
           minzoom: 3,
         });
@@ -265,19 +410,49 @@
           type: "symbol",
           source: "intercityrailshapes",
           "source-layer": "data",
-          filter: ["all", ["==", 2, ["get", "route_type"]]],
+          filter: [
+            "all",
+            ["any", ["==", 2, ["get", "route_type"]]],
+            ["!", ["all", ["==", ["get", "chateau"], "gotransit"], ["==", ["get", "shape_id"], "UNGL"]]],
+            [
+              "!",
+              [
+                "all",
+                ["==", "amtrak", ["get", "chateau"]],
+                ["==", true, ["get", "stop_to_stop_generated"]],
+              ],
+            ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-renfe~media~larga~distancia~y~ave", ["get", "chateau"]],
+                ["==", "f-ahverkehrsverbund~schleswig~holstein~nah", ["get", "chateau"]],
+                ["==", true, ["get", "stop_to_stop_generated"]],
+              ],
+            ],
+          ],
           layout: {
             "symbol-placement": "line",
-            "text-field": routeLabel,
-            "text-font": ["NotoSans-Bold"],
+            "text-field": urlParams.get("debug")
+              ? ["concat", ["get", "onestop_feed_id"], "|", ["coalesce", ["get", "route_label"]]]
+              : ["get", "route_label"],
+            "text-font": [
+              "step",
+              ["zoom"],
+              ["literal", ["NotoSans-SemiBold"]],
+              7,
+              ["literal", ["NotoSans-Bold"]],
+            ],
             "text-size": ["interpolate", ["linear"], ["zoom"], 3, 6, 6, 7, 9, 9, 13, 11],
             "text-ignore-placement": false,
             "symbol-spacing": ["step", ["zoom"], 30, 6, 40, 9, 70, 13, 80, 15, 100],
             "text-allow-overlap": false,
             "text-pitch-alignment": "viewport",
+            "visibility": "none",
           },
           paint: {
-            "text-color": textColor,
+            "text-color": ["concat", "#", ["get", "text_color"]],
             "text-halo-color": lineColor,
             "text-halo-width": 1,
             "text-halo-blur": 1,
@@ -296,6 +471,14 @@
               "any",
               ["==", 1, ["get", "route_type"]],
               ["==", 12, ["get", "route_type"]],
+            ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "nyct", ["get", "chateau"]],
+                ["==", true, ["get", "stop_to_stop_generated"]],
+              ],
             ],
           ],
           paint: {
@@ -344,9 +527,15 @@
             "symbol-spacing": ["step", ["zoom"], 20, 6, 40, 9, 70, 13, 80, 15, 100],
             "text-allow-overlap": false,
             "text-pitch-alignment": "viewport",
+            "visibility": "none",
           },
           paint: {
-            "text-color": textColor,
+            "text-color": [
+              "case",
+              ["==", ["get", "color"], "000000"],
+              "#ffffff",
+              ["concat", "#", ["get", "text_color"]],
+            ],
             "text-halo-color": lineColor,
             "text-halo-width": 1,
             "text-halo-blur": 1,
@@ -365,6 +554,30 @@
               "any",
               ["==", 0, ["get", "route_type"]],
               ["==", 5, ["get", "route_type"]],
+            ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-9mu-mts", ["get", "onestop_feed_id"]],
+                ["==", ["coalesce", ["get", "route_label"]], "Event"],
+              ],
+            ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-9mu-mts", ["get", "onestop_feed_id"]],
+                ["==", ["coalesce", ["get", "route_label"]], "Silver"],
+              ],
+            ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "nyct", ["get", "chateau"]],
+                ["==", true, ["get", "stop_to_stop_generated"]],
+              ],
             ],
           ],
           paint: {
@@ -403,6 +616,22 @@
               ["==", 0, ["get", "route_type"]],
               ["==", 5, ["get", "route_type"]],
             ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-9mu-mts", ["get", "onestop_feed_id"]],
+                ["==", ["coalesce", ["get", "route_label"]], "Event"],
+              ],
+            ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-9mu-mts", ["get", "onestop_feed_id"]],
+                ["==", ["coalesce", ["get", "route_label"]], "Silver"],
+              ],
+            ],
           ],
           layout: {
             "symbol-placement": "line",
@@ -413,9 +642,10 @@
             "symbol-spacing": ["step", ["zoom"], 20, 6, 40, 9, 70, 13, 80, 15, 100],
             "text-allow-overlap": false,
             "text-pitch-alignment": "viewport",
+            "visibility": "none",
           },
           paint: {
-            "text-color": ["concat", "#", ["coalesce", ["get", "text_color"], "ffffff"]],
+            "text-color": ["concat", "#", ["get", "text_color"]],
             "text-halo-color": lineColor,
             "text-halo-width": 1,
             "text-halo-blur": 1,

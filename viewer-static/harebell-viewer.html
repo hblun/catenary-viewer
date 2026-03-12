@@ -151,6 +151,66 @@
         });
 
         map.addLayer({
+          id: "busshapes-casing",
+          type: "line",
+          source: "busshapes",
+          "source-layer": "data",
+          filter: [
+            "all",
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-9mu-mts", ["get", "onestop_feed_id"]],
+                ["==", ["coalesce", ["get", "route_label"]], "950"],
+              ],
+            ],
+            [
+              "!",
+              [
+                "all",
+                ["==", "f-9mu-mts", ["get", "onestop_feed_id"]],
+                ["==", ["coalesce", ["get", "route_label"]], "Old Town to Airport Shuttle"],
+              ],
+            ],
+            [
+              "!",
+              [
+                "all",
+                [
+                  "any",
+                  ["==", "autobús~interurbano~de~cataluña", ["get", "chateau"]],
+                  ["==", "flixbus~europe", ["get", "chateau"]],
+                  ["==", "f-ahverkehrsverbund~schleswig~holstein~nah", ["get", "chateau"]],
+                ],
+                ["==", true, ["get", "stop_to_stop_generated"]],
+              ],
+            ],
+            ["!=", ["get", "onestop_feed_id"], "f-u0-blablacar"],
+          ],
+          paint: {
+            "line-color": "#ffffff",
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              8,
+              2.2,
+              10,
+              3.6,
+              12,
+              5.8,
+              14,
+              7.6,
+              16,
+              9.4,
+            ],
+            "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.75, 11, 0.92, 14, 0.96],
+          },
+          minzoom: 8,
+        });
+
+        map.addLayer({
           id: "busshapes",
           type: "line",
           source: "busshapes",
@@ -190,8 +250,22 @@
           ],
           paint: {
             "line-color": lineColor,
-            "line-width": ["interpolate", ["linear"], ["zoom"], 7, 0.4, 10, 0.7, 12, 1, 14, 1.2, 15, 1.5],
-            "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.05, 11, 0.3, 14, 0.5],
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              8,
+              1.2,
+              10,
+              2.1,
+              12,
+              3.4,
+              14,
+              4.7,
+              16,
+              6.1,
+            ],
+            "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.8, 11, 0.95, 14, 1],
           },
           minzoom: 8,
         });
@@ -255,13 +329,13 @@
                 : ["step", ["zoom"], 200, 12, 80, 13, 100, 15, 100, 20, 150],
             "text-allow-overlap": false,
             "text-pitch-alignment": "viewport",
-            "visibility": "none",
+            "visibility": "visible",
           },
           paint: {
             "text-color": ["concat", "#", ["get", "text_color"]],
-            "text-halo-color": lineColor,
-            "text-halo-width": 2,
-            "text-halo-blur": 0,
+            "text-halo-color": "#ffffff",
+            "text-halo-width": 2.4,
+            "text-halo-blur": 0.4,
           },
           minzoom: 11,
         });

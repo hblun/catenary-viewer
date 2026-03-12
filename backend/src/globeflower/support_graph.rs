@@ -259,6 +259,20 @@ impl SupportGraph {
         let mut split_candidates: Vec<(f64, SupportNodeId)> = Vec::new();
         let mut seen_nodes = HashSet::new();
 
+        let start = *corridor.centerline.first().unwrap();
+        let end = *corridor.centerline.last().unwrap();
+        let endpoint_threshold = match corridor.mode {
+            RailMode::Subway => 2.0,
+            _ => 5.0,
+        };
+        let start_node = self.find_or_create_node(start, corridor.z_class, endpoint_threshold);
+        let end_node = self.find_or_create_node(end, corridor.z_class, endpoint_threshold);
+
+        split_candidates.push((0.0, start_node));
+        seen_nodes.insert(start_node);
+        split_candidates.push((total_len, end_node));
+        seen_nodes.insert(end_node);
+
         let num_samples = (total_len / sample_interval).ceil() as usize;
 
         for i in 0..=num_samples {

@@ -21,9 +21,6 @@ services:
 
   maple-local:
     image: ${PIPELINE_IMAGE:-catenary-harebell-pipeline:latest}
-    build:
-      context: .
-      dockerfile: Dockerfile.pipeline
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
       GTFS_ZIP_TEMP: /tmp/gtfs-zip
@@ -45,9 +42,6 @@ services:
 
   globeflower:
     image: ${PIPELINE_IMAGE:-catenary-harebell-pipeline:latest}
-    build:
-      context: .
-      dockerfile: Dockerfile.pipeline
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
     command: >
@@ -68,9 +62,6 @@ services:
 
   harebell-export:
     image: ${PIPELINE_IMAGE:-catenary-harebell-pipeline:latest}
-    build:
-      context: .
-      dockerfile: Dockerfile.pipeline
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
     command: >
@@ -90,9 +81,7 @@ services:
       - harebell_tiles:/tiles
 
   birch-tiles:
-    build:
-      context: .
-      dockerfile: Dockerfile.birch-lite
+    image: ${BIRCH_TILES_IMAGE:-test-canteraymaps-wchmgq-birch-tiles:latest}
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
       PORT: 8090
@@ -104,9 +93,6 @@ services:
 
   harebell:
     image: ${PIPELINE_IMAGE:-catenary-harebell-pipeline:latest}
-    build:
-      context: .
-      dockerfile: Dockerfile.pipeline
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
     command:

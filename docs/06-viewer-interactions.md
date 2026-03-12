@@ -179,3 +179,13 @@ function buildRouteFilter(state) {
     return filters.length === 1 ? filters[0] : ['all', ...filters];
 }
 ```
+
+## Future View Modes
+
+### Octolinear Diagram Mode
+
+- Keep the default map view geographically faithful and bus-first.
+- Add an optional alternate view mode that reprojects the rendered network into an octolinear diagram style.
+- Target use case: TfL-style Tube map presentation for dense urban corridors where clarity of interchange and shared bundles matters more than strict street geometry.
+- This should be a switchable presentation mode, not a replacement for the default live map.
+- Reuse the same ingested backend data, but allow a separate rendering pipeline and styling rules for diagram output.

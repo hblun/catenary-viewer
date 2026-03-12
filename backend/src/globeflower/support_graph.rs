@@ -252,7 +252,10 @@ impl SupportGraph {
 
         // Sampling Logic (LOOM style)
         // Sample along corridor at interval L, query for nodes within D
-        let total_len = geometry_utils::polyline_length_metric(&corridor.centerline);
+        // `corridor.centerline` is stored in lon/lat, so use the geo helpers that
+        // return distances in meters. Mixing degree-lengths with meter thresholds
+        // collapses all splits into a single node and yields zero support edges.
+        let total_len = geometry_utils::polyline_length(&corridor.centerline);
         let sample_interval = 25.0; // 25m sampling
         let query_dist = 5.0; // 5m query radius
 
@@ -306,7 +309,7 @@ impl SupportGraph {
                 let node_pos = (entry.geom()[0], entry.geom()[1]);
                 // Check actual distance
                 if let Some((d_along, d_off, _)) =
-                    geometry_utils::project_point_to_polyline_metric(node_pos, &corridor.centerline)
+                    geometry_utils::project_point_to_polyline(node_pos, &corridor.centerline)
                 {
                     if d_off < query_dist {
                         // Check No-Merge Zones (Endpoints)

@@ -52,7 +52,7 @@
     <div id="map"></div>
     <div class="status">
       <h1>Scotland Transit</h1>
-      <p>Rendered through the Maple, Globeflower, and Harebell pipeline.</p>
+      <p>Bus-first vector tiles from Maple ingest, with rail detail layered underneath.</p>
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -65,16 +65,39 @@
       }
 
       function addTransitLayers(map) {
+        map.addSource("busshapes", {
+          type: "vector",
+          tiles: [`${window.location.origin}/birch/shapes_bus/{z}/{x}/{y}.pbf`],
+          minzoom: 4,
+          maxzoom: 16,
+        });
+
+        map.addSource("localcityrailshapes", {
+          type: "vector",
+          tiles: [`${window.location.origin}/birch/shapes_local_rail/{z}/{x}/{y}.pbf`],
+          minzoom: 4,
+          maxzoom: 16,
+        });
+
+        map.addSource("intercityrailshapes", {
+          type: "vector",
+          tiles: [`${window.location.origin}/birch/shapes_intercity_rail/{z}/{x}/{y}.pbf`],
+          minzoom: 4,
+          maxzoom: 16,
+        });
+
+        map.addSource("othershapes", {
+          type: "vector",
+          tiles: [`${window.location.origin}/birch/shapes_ferry/{z}/{x}/{y}.pbf`],
+          minzoom: 4,
+          maxzoom: 16,
+        });
+
         map.addSource("harebell", {
           type: "vector",
           tiles: [`${window.location.origin}/tiles/{z}/{x}/{y}.pbf`],
           minzoom: 3,
           maxzoom: 16,
-        });
-
-        map.addSource("gtfs-overlay", {
-          type: "geojson",
-          data: `${window.location.origin}/data/routes.geojson`,
         });
 
         const lineColor = ["concat", "#", ["get", "color"]];
@@ -85,114 +108,29 @@
           ["concat", "#", ["coalesce", ["get", "text_color"], "ffffff"]],
         ];
         const routeLabel = ["coalesce", ["get", "route_label"], ["get", "route_id"]];
-        const gtfsLineColor = ["coalesce", ["get", "color"], "#5b6472"];
-        const gtfsTextColor = ["coalesce", ["get", "text_color"], "#ffffff"];
-        const gtfsRouteLabel = [
-          "coalesce",
-          ["get", "route_short_name"],
-          ["get", "route_long_name"],
-          ["get", "route_id"],
-        ];
 
         map.addLayer({
-          id: "gtfs-all-routes-casing",
+          id: "busshapes-casing",
           type: "line",
-          source: "gtfs-overlay",
+          source: "busshapes",
+          "source-layer": "data",
           paint: {
             "line-color": "#ffffff",
-            "line-width": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              7,
-              1.5,
-              9,
-              2.5,
-              11,
-              4,
-              13,
-              5.5,
-              15,
-              7,
-            ],
+            "line-width": ["interpolate", ["linear"], ["zoom"], 7, 1.2, 10, 2.2, 12, 3.2, 14, 4.2, 15, 5],
             "line-opacity": 0.9,
           },
           minzoom: 7,
         });
 
         map.addLayer({
-          id: "gtfs-all-routes",
-          type: "line",
-          source: "gtfs-overlay",
-          paint: {
-            "line-color": gtfsLineColor,
-            "line-width": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              7,
-              0.8,
-              9,
-              1.4,
-              11,
-              2.4,
-              13,
-              3.4,
-              15,
-              4.5,
-            ],
-            "line-opacity": 0.92,
-          },
-          minzoom: 7,
-        });
-
-        map.addLayer({
-          id: "gtfs-route-labels",
-          type: "symbol",
-          source: "gtfs-overlay",
-          layout: {
-            "symbol-placement": "line",
-            "text-field": gtfsRouteLabel,
-            "text-font": ["NotoSans-Bold"],
-            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 8, 12, 10, 14, 12],
-            "text-ignore-placement": false,
-            "symbol-spacing": ["step", ["zoom"], 140, 12, 110, 14, 90],
-            "text-allow-overlap": false,
-            "text-pitch-alignment": "viewport",
-          },
-          paint: {
-            "text-color": gtfsTextColor,
-            "text-halo-color": gtfsLineColor,
-            "text-halo-width": 2,
-            "text-halo-blur": 0,
-          },
-          minzoom: 10,
-        });
-
-        map.addLayer({
           id: "busshapes",
           type: "line",
-          source: "harebell",
-          "source-layer": "transit",
-          filter: ["all", ["==", 3, ["get", "route_type"]]],
+          source: "busshapes",
+          "source-layer": "data",
           paint: {
             "line-color": lineColor,
-            "line-width": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              7,
-              0.4,
-              10,
-              0.7,
-              12,
-              1,
-              14,
-              1.2,
-              15,
-              1.5,
-            ],
-            "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.05, 11, 0.3, 14, 0.5],
+            "line-width": ["interpolate", ["linear"], ["zoom"], 7, 0.8, 10, 1.4, 12, 2.2, 14, 2.8, 15, 3.4],
+            "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.18, 11, 0.55, 14, 0.78],
           },
           minzoom: 8,
         });
@@ -200,9 +138,8 @@
         map.addLayer({
           id: "bus-labels",
           type: "symbol",
-          source: "harebell",
-          "source-layer": "transit",
-          filter: ["all", ["==", 3, ["get", "route_type"]]],
+          source: "busshapes",
+          "source-layer": "data",
           layout: {
             "symbol-placement": "line",
             "text-field": routeLabel,
@@ -225,8 +162,8 @@
         map.addLayer({
           id: "othershapes",
           type: "line",
-          source: "harebell",
-          "source-layer": "transit",
+          source: "othershapes",
+          "source-layer": "data",
           filter: [
             "all",
             [
@@ -246,8 +183,8 @@
         map.addLayer({
           id: "other-labels",
           type: "symbol",
-          source: "harebell",
-          "source-layer": "transit",
+          source: "othershapes",
+          "source-layer": "data",
           filter: [
             "all",
             [
@@ -279,8 +216,8 @@
         map.addLayer({
           id: "ferryshapes",
           type: "line",
-          source: "harebell",
-          "source-layer": "transit",
+          source: "othershapes",
+          "source-layer": "data",
           filter: ["all", ["==", 4, ["get", "route_type"]]],
           paint: {
             "line-dasharray": [1, 2],
@@ -294,8 +231,8 @@
         map.addLayer({
           id: "intercityrailshapes",
           type: "line",
-          source: "harebell",
-          "source-layer": "transit",
+          source: "intercityrailshapes",
+          "source-layer": "data",
           filter: ["all", ["==", 2, ["get", "route_type"]]],
           paint: {
             "line-color": lineColor,
@@ -326,8 +263,8 @@
         map.addLayer({
           id: "intercityrail-labels",
           type: "symbol",
-          source: "harebell",
-          "source-layer": "transit",
+          source: "intercityrailshapes",
+          "source-layer": "data",
           filter: ["all", ["==", 2, ["get", "route_type"]]],
           layout: {
             "symbol-placement": "line",
@@ -351,8 +288,8 @@
         map.addLayer({
           id: "metroshapes",
           type: "line",
-          source: "harebell",
-          "source-layer": "transit",
+          source: "localcityrailshapes",
+          "source-layer": "data",
           filter: [
             "all",
             [
@@ -388,8 +325,8 @@
         map.addLayer({
           id: "metro-labels",
           type: "symbol",
-          source: "harebell",
-          "source-layer": "transit",
+          source: "localcityrailshapes",
+          "source-layer": "data",
           filter: [
             "all",
             [
@@ -420,8 +357,8 @@
         map.addLayer({
           id: "tramshapes",
           type: "line",
-          source: "harebell",
-          "source-layer": "transit",
+          source: "localcityrailshapes",
+          "source-layer": "data",
           filter: [
             "all",
             [
@@ -457,8 +394,8 @@
         map.addLayer({
           id: "tram-labels",
           type: "symbol",
-          source: "harebell",
-          "source-layer": "transit",
+          source: "localcityrailshapes",
+          "source-layer": "data",
           filter: [
             "all",
             [

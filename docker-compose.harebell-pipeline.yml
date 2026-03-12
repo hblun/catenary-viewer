@@ -89,17 +89,18 @@ services:
       - harebell_pipeline:/pipeline
       - harebell_tiles:/tiles
 
-  gtfs-overlay-export:
+  birch-tiles:
     build:
       context: .
-      dockerfile: Dockerfile.gtfs-prep
+      dockerfile: Dockerfile.birch-lite
     environment:
-      GTFS_DIR: /gtfs
-      GTFS_FILE: ${GTFS_FILE:-filtered_scotland_gtfs.zip}
-      OUTPUT_DIR: /overlay
-    volumes:
-      - ${GTFS_HOST_DIR:-./gtfs}:/gtfs:ro
-      - gtfs_overlay:/overlay
+      DATABASE_URL: postgres://${POSTGRES_USER:-catenary}:${POSTGRES_PASSWORD:-catenary}@postgres:5432/${POSTGRES_DB:-catenary}
+      PORT: 8090
+    depends_on:
+      postgres:
+        condition: service_healthy
+      maple-local:
+        condition: service_completed_successfully
 
   harebell:
     image: ${PIPELINE_IMAGE:-catenary-harebell-pipeline:latest}
@@ -131,17 +132,15 @@ services:
     image: nginx:alpine
     depends_on:
       - harebell
-      - gtfs-overlay-export
+      - birch-tiles
     ports:
       - "${VIEWER_PORT:-8081}:80"
     volumes:
       - ./viewer-static/harebell-viewer.html:/usr/share/nginx/html/index.html:ro
       - ./viewer-static/harebell-nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./frontend/static:/usr/share/nginx/html/static:ro
-      - gtfs_overlay:/usr/share/nginx/html/data:ro
 
 volumes:
   harebell_postgres:
   harebell_pipeline:
   harebell_tiles:
-  gtfs_overlay:

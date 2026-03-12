@@ -298,6 +298,7 @@ fn load_and_match_gtfs_to_osm(
 
     let mut processed = 0;
     let total = shapes.len();
+    let allow_regional_rail = config.name == "scotland";
 
     for shape in shapes {
         for route_id in &shape.route_ids {
@@ -316,6 +317,9 @@ fn load_and_match_gtfs_to_osm(
             // Rail filtering logic (exclude general rail, allow exceptions)
             if mode == crate::osm_types::RailMode::Rail {
                 let mut allowed = false;
+                if allow_regional_rail {
+                    allowed = true;
+                }
                 if let Some(line) = line_map.get(&line_id) {
                     let c = line_id.chateau.as_str();
                     // Check simple chateau exceptions
